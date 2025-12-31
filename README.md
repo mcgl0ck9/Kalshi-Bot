@@ -4,13 +4,19 @@ Multi-signal edge detection system for Kalshi prediction markets.
 
 ## Strategy
 
-Hunt for edges using three converging signals:
+Hunt for edges using multiple converging signals:
 
+### Core Signals
 1. **Cross-Platform Price Divergence** - When Polymarket shows 98% YES and Kalshi shows 89% YES, that's a potential edge
 2. **Sentiment-Price Divergence** - When aggregated news/social sentiment implies a different probability than the market price
 3. **Whale Activity** - Large positions from top Polymarket traders can signal informed money
 
-**The ideal trade:** All three signals align (e.g., Polymarket at 95% + bullish sentiment + whale accumulation, while Kalshi sits at 82%)
+### Meta Edge Signals
+4. **Options-Implied Probabilities** - Fed Funds Futures price rate decisions, SPX options price recession risk
+5. **New Market Scanner** - Fresh markets are often mispriced before liquidity arrives
+6. **Calibration Tracking** - Track prediction accuracy over time, adjust for historical biases
+
+**The ideal trade:** Multiple signals align (e.g., Polymarket at 95% + bullish sentiment + whale accumulation + options-implied 90%, while Kalshi sits at 82%)
 
 ## Features
 
@@ -22,6 +28,12 @@ Hunt for edges using three converging signals:
 - Kelly Criterion position sizing
 - Discord alerts (webhooks + slash commands)
 - Tiered alerts: 🔴 Critical, 🟡 Standard, 🟢 FYI
+
+### Meta Edge Features
+- **Options-Implied Module** - Fed Funds Futures, SPX options, Treasury yield curve
+- **New Market Scanner** - Detect fresh markets with early mover advantage
+- **Calibration Tracker** - Brier scores, accuracy by category, bias adjustment
+- **Multi-Channel Discord** - Route signals to dedicated channels by type
 
 ## Quick Start
 
@@ -85,12 +97,20 @@ src/
 ├── index.ts           # CLI entry point
 ├── pipeline.ts        # Main edge detection pipeline
 ├── config.ts          # Configuration
-├── types/             # TypeScript types
+├── types/             # TypeScript types (core, economic, edge, meta-edge)
 ├── utils/             # Logger, helpers
 ├── exchanges/         # Kalshi + Polymarket via dr-manhattan
-├── fetchers/          # News RSS, whale tracking
+├── fetchers/          # Data fetchers
+│   ├── news.ts        # RSS feed aggregation
+│   ├── whales.ts      # Whale activity tracking
+│   ├── options-implied.ts  # Fed Funds, SPX, Treasury
+│   └── economic/      # Fed, CPI, Jobs, GDP nowcasts
+├── edge/              # Edge detection
+│   ├── macro-edge.ts  # Economic indicator edges
+│   ├── new-market-scanner.ts  # Fresh market detection
+│   └── calibration-tracker.ts # Prediction tracking
 ├── analysis/          # Sentiment, cross-platform, sizing
-└── output/            # Discord webhooks + bot
+└── output/            # Discord webhooks + channels + bot
 ```
 
 ## How It Works

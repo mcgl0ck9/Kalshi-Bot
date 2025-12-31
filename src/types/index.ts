@@ -205,3 +205,4 @@ export interface Orderbook {
 
 export * from './economic.js';
 export * from './edge.js';
+export * from './meta-edge.js';

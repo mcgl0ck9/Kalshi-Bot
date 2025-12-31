@@ -39,3 +39,13 @@ export {
   type BoxOfficeData,
   type UpcomingRelease,
 } from './entertainment.js';
+
+// Options-implied probabilities
+export {
+  fetchFedFundsImplied,
+  fetchSPXImplied,
+  fetchTreasuryYields,
+  fetchAllOptionsImplied,
+  findOptionsEdge,
+  formatOptionsImpliedReport,
+} from './options-implied.js';
