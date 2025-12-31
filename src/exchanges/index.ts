@@ -124,6 +124,35 @@ export async function getPolymarketOrderbook(tokenId: string): Promise<Orderbook
 // MARKET NORMALIZATION
 // =============================================================================
 
+/**
+ * Build Kalshi market URL
+ * Format: https://kalshi.com/markets/{series_ticker}/{slug}/{market_ticker}
+ *
+ * Examples:
+ * - kxbtc-25dec31 -> series: kxbtc
+ * - kxbtc2025100-25dec31 -> series: kxbtc2025100
+ * - kxbtcmaxy-25 -> series: kxbtcmaxy
+ */
+function buildKalshiUrl(ticker: string, question: string): string {
+  // Extract series ticker (everything before the date suffix)
+  // Date suffixes look like: -25dec31, -25, -25jan15
+  const seriesMatch = ticker.match(/^(.+?)-\d{2}[a-z]*\d*$/i);
+  const series = seriesMatch ? seriesMatch[1].toLowerCase() : ticker.split('-')[0].toLowerCase();
+
+  // Create URL-friendly slug from question
+  const slug = question
+    .toLowerCase()
+    .replace(/[?!.,'"]/g, '')           // Remove punctuation
+    .replace(/[^a-z0-9\s-]/g, '')       // Remove special chars
+    .replace(/\s+/g, '-')               // Replace spaces with hyphens
+    .replace(/-+/g, '-')                // Collapse multiple hyphens
+    .replace(/^-|-$/g, '')              // Trim hyphens
+    .slice(0, 50);                       // Limit length
+
+  // Build full URL
+  return `https://kalshi.com/markets/${series}/${slug}/${ticker.toLowerCase()}`;
+}
+
 function normalizeKalshiMarket(market: DrMarket): Market {
   const price = market.prices?.[0] ?? 0;
 
@@ -146,6 +175,9 @@ function normalizeKalshiMarket(market: DrMarket): Market {
       : String(market.closeTime);
   }
 
+  // Build proper Kalshi URL
+  const url = buildKalshiUrl(market.id, market.question ?? '');
+
   return {
     platform: 'kalshi',
     id: market.id,
@@ -157,7 +189,7 @@ function normalizeKalshiMarket(market: DrMarket): Market {
     volume: market.volume ?? 0,
     volume24h: market.volume ?? 0,
     liquidity: market.liquidity ?? 0,
-    url: `https://kalshi.com/markets/${market.id}`,
+    url,
     closeTime,
     outcomes,
   };

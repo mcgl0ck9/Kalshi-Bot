@@ -367,6 +367,37 @@ export function analyzeMarketsForRecencyBias(
  * Simple version: analyze without full price history
  * Uses current price and estimates prior from category base rate
  */
+/**
+ * Check if market is too far in the future (novelty/illiquid)
+ * Skip markets beyond 2 years out - they're not actionable
+ */
+function isMarketTooFarInFuture(market: Market): boolean {
+  const title = (market.title ?? '').toLowerCase();
+  const currentYear = new Date().getFullYear();
+
+  // Check for year mentions in title
+  const yearMatch = title.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    const marketYear = parseInt(yearMatch[1], 10);
+    if (marketYear > currentYear + 2) {
+      return true; // Skip markets more than 2 years out
+    }
+  }
+
+  // Check closeTime if available
+  if (market.closeTime) {
+    const closeDate = new Date(market.closeTime);
+    const twoYearsFromNow = new Date();
+    twoYearsFromNow.setFullYear(twoYearsFromNow.getFullYear() + 2);
+
+    if (closeDate > twoYearsFromNow) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function analyzeMarketsForRecencyBiasSimple(
   markets: Market[],
   minEdge: number = 0.05
@@ -374,6 +405,11 @@ export function analyzeMarketsForRecencyBiasSimple(
   const signals: RecencyBiasSignal[] = [];
 
   for (const market of markets) {
+    // Skip far-future novelty markets (not actionable, low liquidity)
+    if (isMarketTooFarInFuture(market)) {
+      continue;
+    }
+
     const category = detectMarketCategory(market);
     const baseRate = getBaseRate(market, category);
 

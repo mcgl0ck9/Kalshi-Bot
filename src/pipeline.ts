@@ -63,6 +63,12 @@ import {
   formatSummaryReport,
 } from './output/index.js';
 
+import {
+  sendEdgeAlert,
+  sendMacroAlert,
+  sendToChannel,
+} from './output/channels.js';
+
 // =============================================================================
 // PIPELINE RESULT
 // =============================================================================
@@ -418,22 +424,35 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // ========== STEP 8: SEND ALERTS ==========
     logger.step(8, 'Sending alerts...');
 
-    // Send top 5 opportunities
+    // Send top 5 opportunities to appropriate channels
     for (const opp of opportunities.slice(0, 5)) {
-      const message = formatEdgeAlert(opp);
-      const sent = await sendWebhookMessage(message);
-      if (sent) stats.alertsSent++;
-      await delay(1000); // Rate limit
+      try {
+        await sendEdgeAlert(opp);
+        stats.alertsSent++;
+        await delay(1000); // Rate limit
+      } catch (error) {
+        logger.warn(`Failed to send edge alert: ${error}`);
+      }
     }
 
-    // Send summary report
+    // Send macro signals to macro channel
+    for (const macroSig of macroSignals.slice(0, 3)) {
+      try {
+        await sendMacroAlert(macroSig);
+        await delay(500);
+      } catch (error) {
+        logger.warn(`Failed to send macro alert: ${error}`);
+      }
+    }
+
+    // Send summary report to digest channel
     const summary = formatSummaryReport(
       opportunities,
       allDivergences,
       whaleSignals,
       stats
     );
-    await sendWebhookMessage(summary);
+    await sendToChannel('digest', summary);
 
     logger.success(`Sent ${stats.alertsSent} alerts`);
 
