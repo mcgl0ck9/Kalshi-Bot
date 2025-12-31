@@ -27,7 +27,7 @@ import { logger, delay } from './utils/index.js';
 import { BANKROLL, CATEGORY_PRIORITIES, MIN_EDGE_THRESHOLD, ODDS_API_KEY } from './config.js';
 
 // Exchanges
-import { fetchKalshiMarkets, fetchPolymarketMarkets, fetchKalshiSportsMarkets, fetchAllKalshiMarkets } from './exchanges/index.js';
+import { fetchKalshiMarkets, fetchPolymarketMarkets, fetchKalshiSportsMarkets, fetchAllKalshiMarkets, fetchKalshiWeatherMarkets } from './exchanges/index.js';
 
 // Fetchers
 import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges } from './fetchers/index.js';
@@ -361,7 +361,24 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // 6.5.4b: City-Specific Weather (Snow in Chicago, Rain in LA, etc.)
     logger.info('  Checking city weather markets...');
     try {
-      const cityWeatherEdges = await analyzeCityWeatherMarkets(kalshiMarkets);
+      // Fetch weather-specific markets to ensure we have them
+      const weatherMarkets = await fetchKalshiWeatherMarkets().catch(() => [] as Market[]);
+      const allWeatherMarkets = [...kalshiMarkets, ...weatherMarkets];
+
+      // Deduplicate by ticker
+      const seenWeatherTickers = new Set<string>();
+      const uniqueWeatherMarkets = allWeatherMarkets.filter(m => {
+        const ticker = m.ticker ?? m.id;
+        if (seenWeatherTickers.has(ticker)) return false;
+        seenWeatherTickers.add(ticker);
+        return true;
+      });
+
+      if (weatherMarkets.length > 0) {
+        logger.info(`    Fetched ${weatherMarkets.length} weather-specific markets`);
+      }
+
+      const cityWeatherEdges = await analyzeCityWeatherMarkets(uniqueWeatherMarkets);
       stats.cityWeatherSignals = cityWeatherEdges.length;
 
       if (cityWeatherEdges.length > 0) {

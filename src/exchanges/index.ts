@@ -387,6 +387,124 @@ export async function fetchKalshiRTMarkets(): Promise<Market[]> {
 }
 
 /**
+ * Fetch weather markets from Kalshi
+ * Weather markets use series tickers like KXCHISNOW, KXLARAIN, KXTEMPNY, etc.
+ */
+export async function fetchKalshiWeatherMarkets(): Promise<Market[]> {
+  try {
+    // Find all weather-related series
+    const seriesResponse = await fetch('https://trading-api.kalshi.com/trade-api/v2/series?limit=500', {
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!seriesResponse.ok) {
+      logger.warn(`Failed to fetch series for weather: ${seriesResponse.status}`);
+      return [];
+    }
+
+    const seriesData = await seriesResponse.json() as { series?: Array<{ ticker: string; title: string }> };
+    const allSeries = seriesData.series ?? [];
+
+    // Weather-related keywords in series tickers and titles
+    const weatherKeywords = [
+      'snow', 'rain', 'temp', 'weather', 'precipitation', 'hurricane',
+      'storm', 'tornado', 'flood', 'drought', 'heat', 'cold', 'freeze'
+    ];
+    const cityKeywords = [
+      'chi', 'la', 'nyc', 'ny', 'boston', 'denver', 'miami', 'seattle',
+      'phoenix', 'minneapolis', 'chicago', 'angeles'
+    ];
+
+    // Find weather-related series
+    const weatherSeries = allSeries.filter(s => {
+      const ticker = (s.ticker ?? '').toLowerCase();
+      const title = (s.title ?? '').toLowerCase();
+
+      // Check for weather keywords
+      const hasWeatherKeyword = weatherKeywords.some(kw =>
+        ticker.includes(kw) || title.includes(kw)
+      );
+
+      // Check for city + weather combination
+      const hasCityKeyword = cityKeywords.some(kw =>
+        ticker.includes(kw) || title.includes(kw)
+      );
+
+      return hasWeatherKeyword || (hasCityKeyword && (
+        title.includes('inch') || title.includes('degree') ||
+        title.includes('above') || title.includes('below')
+      ));
+    });
+
+    if (weatherSeries.length === 0) {
+      logger.debug('No weather series found');
+      return [];
+    }
+
+    logger.info(`Found ${weatherSeries.length} weather-related series`);
+
+    // Fetch markets from each series
+    const allMarkets: Market[] = [];
+    const batchSize = 10;
+
+    for (let i = 0; i < Math.min(weatherSeries.length, 50); i += batchSize) {
+      const batch = weatherSeries.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (series) => {
+          try {
+            const marketsResponse = await fetch(
+              `https://trading-api.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`,
+              { headers: { 'Accept': 'application/json' } }
+            );
+            if (!marketsResponse.ok) return [];
+            const data = await marketsResponse.json() as { markets?: unknown[] };
+            return data.markets ?? [];
+          } catch (e) {
+            return [];
+          }
+        })
+      );
+
+      for (const markets of batchResults) {
+        for (const m of markets) {
+          const market = m as Record<string, unknown>;
+          const ticker = market.ticker as string ?? '';
+          const title = market.title as string ?? '';
+          const subtitle = market.subtitle as string ?? '';
+          const status = market.status as string ?? '';
+
+          if (status !== 'active') continue;
+
+          const fullTitle = subtitle ? `${title} ${subtitle}` : title;
+          const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+
+          allMarkets.push({
+            platform: 'kalshi' as const,
+            id: ticker,
+            ticker,
+            title: fullTitle,
+            description: market.rules_primary as string,
+            category: 'weather' as MarketCategory,
+            price: yesPrice / 100,
+            volume: (market.volume as number) ?? 0,
+            volume24h: (market.volume_24h as number) ?? 0,
+            liquidity: (market.open_interest as number) ?? 0,
+            url: buildKalshiUrl(ticker, title),
+            closeTime: market.close_time as string,
+          });
+        }
+      }
+    }
+
+    logger.info(`Fetched ${allMarkets.length} Kalshi weather markets`);
+    return allMarkets;
+  } catch (error) {
+    logger.error(`Kalshi weather markets fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
  * Fetch markets from Polymarket
  */
 export async function fetchPolymarketMarkets(limit: number = 100): Promise<Market[]> {
