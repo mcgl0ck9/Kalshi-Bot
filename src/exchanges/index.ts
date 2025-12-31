@@ -11,7 +11,7 @@ import {
   type Market as DrMarket,
   MarketUtils,
 } from '@alango/dr-manhattan';
-import type { Market, MarketCategory, Orderbook } from '../types/index.js';
+import type { Market, MarketCategory } from '../types/index.js';
 import { logger } from '../utils/index.js';
 import * as config from '../config.js';
 
@@ -90,33 +90,6 @@ export async function fetchPolymarketMarkets(limit: number = 100): Promise<Marke
   } catch (error) {
     logger.error(`Polymarket fetch error: ${error}`);
     return [];
-  }
-}
-
-/**
- * Get orderbook for a Polymarket token (real-time via REST, WebSocket in future)
- */
-export async function getPolymarketOrderbook(tokenId: string): Promise<Orderbook | null> {
-  try {
-    const client = getPolymarketClient();
-    // @ts-expect-error - getOrderbook may not be typed
-    const orderbook = await client.getOrderbook(tokenId);
-
-    if (!orderbook) return null;
-
-    return {
-      bids: orderbook.bids?.map((b: { price: number; size: number }) => ({
-        price: b.price,
-        size: b.size,
-      })) ?? [],
-      asks: orderbook.asks?.map((a: { price: number; size: number }) => ({
-        price: a.price,
-        size: a.size,
-      })) ?? [],
-    };
-  } catch (error) {
-    logger.error(`Polymarket orderbook error: ${error}`);
-    return null;
   }
 }
 
@@ -269,47 +242,4 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
   }
 
   return 'other';
-}
-
-// =============================================================================
-// SPREAD & ORDERBOOK UTILITIES
-// =============================================================================
-
-/**
- * Calculate bid-ask spread from market data
- */
-export function calculateSpread(market: Market): number | null {
-  if (!market.outcomes || market.outcomes.length < 2) return null;
-
-  const yesPrice = market.outcomes[0]?.price ?? 0;
-  const noPrice = market.outcomes[1]?.price ?? 0;
-
-  // Spread is distance from fair value (should sum to ~1.0)
-  const sum = yesPrice + noPrice;
-  if (sum === 0) return null;
-
-  return Math.abs(1 - sum);
-}
-
-/**
- * Get best bid/ask from orderbook
- */
-export function getBestBidAsk(orderbook: Orderbook): {
-  bestBid: number | null;
-  bestAsk: number | null;
-  spread: number | null;
-  midPrice: number | null;
-} {
-  const bestBid = orderbook.bids[0]?.price ?? null;
-  const bestAsk = orderbook.asks[0]?.price ?? null;
-
-  let spread: number | null = null;
-  let midPrice: number | null = null;
-
-  if (bestBid !== null && bestAsk !== null) {
-    spread = bestAsk - bestBid;
-    midPrice = (bestBid + bestAsk) / 2;
-  }
-
-  return { bestBid, bestAsk, spread, midPrice };
 }

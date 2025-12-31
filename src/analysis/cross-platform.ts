@@ -7,8 +7,8 @@
  * - Which platform moves first
  */
 
-import type { Market, CrossPlatformMatch, MarketCategory } from '../types/index.js';
-import { logger, normalizeText } from '../utils/index.js';
+import type { Market, CrossPlatformMatch } from '../types/index.js';
+import { logger } from '../utils/index.js';
 
 // =============================================================================
 // ENTITY EXTRACTION
