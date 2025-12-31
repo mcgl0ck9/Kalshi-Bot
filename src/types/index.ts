@@ -1,0 +1,207 @@
+/**
+ * Core type definitions for Kalshi Edge Detector
+ */
+
+// =============================================================================
+// MARKET TYPES
+// =============================================================================
+
+export interface Market {
+  platform: 'kalshi' | 'polymarket';
+  id: string;
+  ticker?: string;
+  title: string;
+  description?: string;
+  category: MarketCategory;
+  price: number;           // YES price as decimal (0-1)
+  volume: number;
+  volume24h?: number;
+  liquidity?: number;
+  openInterest?: number;
+  url: string;
+  closeTime?: string;
+  tokenId?: string;        // For Polymarket token-level matching
+  outcomes?: OutcomeToken[];
+}
+
+export interface OutcomeToken {
+  outcome: string;
+  tokenId: string;
+  price: number;
+}
+
+export type MarketCategory =
+  | 'politics'
+  | 'crypto'
+  | 'macro'
+  | 'sports'
+  | 'entertainment'
+  | 'geopolitics'
+  | 'weather'
+  | 'tech'
+  | 'other';
+
+// =============================================================================
+// EDGE DETECTION TYPES
+// =============================================================================
+
+export interface CrossPlatformMatch {
+  kalshi: Market;
+  polymarket: Market;
+  similarity: number;
+  kalshiPrice: number;
+  polymarketPrice: number;
+  priceDifference: number;
+  absDifference: number;
+  polymarketMoreBullish: boolean;
+  category: MarketCategory;
+}
+
+export interface SentimentEdge {
+  market: Market;
+  topic: string;
+  category: MarketCategory;
+  marketPrice: number;
+  impliedPrice: number;
+  edge: number;
+  direction: 'BUY YES' | 'BUY NO';
+  sentiment: number;
+  sentimentLabel: 'bullish' | 'bearish' | 'neutral';
+  articleCount: number;
+  confidence: number;
+  urgency: 'critical' | 'standard' | 'fyi';
+  topArticles?: NewsArticle[];
+}
+
+export interface EdgeOpportunity {
+  market: Market;
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined';
+  edge: number;
+  confidence: number;
+  urgency: 'critical' | 'standard' | 'fyi';
+  direction: 'BUY YES' | 'BUY NO';
+  signals: {
+    crossPlatform?: CrossPlatformMatch;
+    sentiment?: SentimentEdge;
+    whale?: WhaleSignal;
+  };
+  sizing?: PositionSizing;
+}
+
+// =============================================================================
+// SENTIMENT TYPES
+// =============================================================================
+
+export interface NewsArticle {
+  source: string;
+  title: string;
+  description?: string;
+  content?: string;
+  url: string;
+  published?: string;
+  sentiment?: number;
+  sentimentLabel?: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface TopicSentiment {
+  topic: string;
+  category: MarketCategory;
+  articleCount: number;
+  avgSentiment: number;
+  sentimentLabel: 'bullish' | 'bearish' | 'neutral';
+  minSentiment: number;
+  maxSentiment: number;
+  topArticles: NewsArticle[];
+}
+
+// =============================================================================
+// WHALE TYPES
+// =============================================================================
+
+export interface Whale {
+  name: string;
+  twitter: string;
+  platform: 'polymarket' | 'kalshi';
+  profit: number;
+  specialty: string[];
+  description?: string;
+}
+
+export interface WhaleSignal {
+  whale: string;
+  whaleProfit: number;
+  text: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+  tickersMentioned: string[];
+  timestamp?: string;
+  specialty: string[];
+}
+
+// =============================================================================
+// POSITION SIZING TYPES
+// =============================================================================
+
+export interface PositionSizing {
+  direction: 'BUY YES' | 'BUY NO';
+  positionSize: number;
+  kellyFraction: number;
+  adjustedKelly: number;
+  edge: number;
+  confidence: number;
+  maxLoss: number;
+}
+
+// =============================================================================
+// CONFIG TYPES
+// =============================================================================
+
+export interface Config {
+  // Discord
+  discordWebhookUrl: string;
+  discordBotToken: string;
+
+  // Kalshi
+  kalshiApiKeyId?: string;
+  kalshiPrivateKey?: string;
+
+  // APIs
+  newsApiKey?: string;
+  oddsApiKey?: string;
+
+  // Trading
+  bankroll: number;
+  maxPositionPct: number;
+  minEdgeThreshold: number;
+  minConfidence: number;
+
+  // Schedule
+  timezone: string;
+  schedule: { hour: number; minute: number }[];
+}
+
+export interface TopicConfig {
+  keywords: string[];
+  category: MarketCategory;
+}
+
+// =============================================================================
+// ORDERBOOK TYPES (from dr-manhattan)
+// =============================================================================
+
+export interface OrderbookLevel {
+  price: number;
+  size: number;
+}
+
+export interface Orderbook {
+  bids: OrderbookLevel[];
+  asks: OrderbookLevel[];
+  timestamp?: number;
+}
+
+// =============================================================================
+// RE-EXPORTS
+// =============================================================================
+
+export * from './economic.js';
+export * from './edge.js';
