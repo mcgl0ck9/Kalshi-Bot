@@ -138,6 +138,9 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     const polyP = (cp.polymarketPrice * 100).toFixed(0);
     const cheaper = cp.kalshiPrice < cp.polymarketPrice ? 'Kalshi' : 'Polymarket';
     lines.push(`• Cross-platform divergence: Kalshi ${kalshiP}¢ vs Poly ${polyP}¢ (${cheaper} is cheaper)`);
+    if (cp.polymarket?.url) {
+      lines.push(`• [View on Polymarket](${cp.polymarket.url})`);
+    }
   }
 
   if (signals.sentiment) {
@@ -289,6 +292,12 @@ export function formatSummaryReport(
 
       lines.push(`${actionEmoji} **${div.kalshi.title?.slice(0, 45)}**`);
       lines.push(`   K: ${kalshiP}¢ vs P: ${polyP}¢ (Δ${diffPct}%) - Buy YES on ${cheaper}`);
+      if (div.kalshi.url) {
+        lines.push(`   [Kalshi](${div.kalshi.url})`);
+      }
+      if (div.polymarket.url) {
+        lines.push(`   [Polymarket](${div.polymarket.url})`);
+      }
       lines.push('');
     }
   }

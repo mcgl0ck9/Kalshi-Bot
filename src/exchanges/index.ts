@@ -77,13 +77,195 @@ export async function fetchKalshiMarkets(limit: number = 100): Promise<Market[]>
 }
 
 /**
+ * Fetch sports markets directly from Kalshi API
+ * Gets markets from Sports category that may not appear in top trending
+ */
+export async function fetchKalshiSportsMarkets(): Promise<Market[]> {
+  try {
+    const allMarkets: Market[] = [];
+
+    // Sports-related series prefixes to fetch
+    const sportsSeries = [
+      'KX', // General sports prefix
+    ];
+
+    // Fetch active markets with cursor pagination
+    let cursor: string | null = null;
+    let totalFetched = 0;
+    const maxPages = 10; // Safety limit
+    let pages = 0;
+
+    while (pages < maxPages) {
+      const url = new URL('https://trading-api.kalshi.com/trade-api/v2/markets');
+      url.searchParams.set('limit', '200');
+      url.searchParams.set('status', 'active');
+      if (cursor) {
+        url.searchParams.set('cursor', cursor);
+      }
+
+      const response = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) {
+        logger.warn(`Kalshi sports markets fetch error: ${response.status}`);
+        break;
+      }
+
+      const data = await response.json() as {
+        markets?: unknown[];
+        cursor?: string;
+      };
+
+      const markets = data.markets ?? [];
+      if (markets.length === 0) break;
+
+      // Filter for sports-related markets
+      for (const m of markets) {
+        const market = m as Record<string, unknown>;
+        const ticker = (market.ticker as string ?? '').toUpperCase();
+        const title = (market.title as string ?? '').toLowerCase();
+        const category = (market.category as string ?? '').toLowerCase();
+
+        // Check if it's a sports market
+        const isSports =
+          category === 'sports' ||
+          ticker.includes('NFL') || ticker.includes('NBA') ||
+          ticker.includes('MLB') || ticker.includes('NHL') ||
+          ticker.includes('NCAAF') || ticker.includes('NCAAB') ||
+          ticker.includes('CFP') || ticker.includes('BOWL') ||
+          title.includes('basketball') || title.includes('football') ||
+          title.includes('hockey') || title.includes('baseball') ||
+          title.includes(' vs ') || title.includes(' at ');
+
+        if (isSports) {
+          const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+          const subtitle = market.subtitle as string ?? '';
+
+          allMarkets.push({
+            platform: 'kalshi' as const,
+            id: ticker,
+            ticker,
+            title: subtitle ? `${market.title} ${subtitle}` : market.title as string,
+            description: market.rules_primary as string,
+            category: 'sports' as MarketCategory,
+            price: yesPrice / 100,
+            volume: (market.volume as number) ?? 0,
+            volume24h: (market.volume_24h as number) ?? 0,
+            liquidity: (market.open_interest as number) ?? 0,
+            url: buildKalshiUrl(ticker, market.title as string ?? ''),
+            closeTime: market.close_time as string,
+          });
+        }
+      }
+
+      totalFetched += markets.length;
+      cursor = data.cursor ?? null;
+      pages++;
+
+      // If no more cursor or we've fetched enough, stop
+      if (!cursor || totalFetched >= 2000) break;
+    }
+
+    // Deduplicate by ticker
+    const seen = new Set<string>();
+    const unique = allMarkets.filter(m => {
+      if (seen.has(m.ticker ?? m.id)) return false;
+      seen.add(m.ticker ?? m.id);
+      return true;
+    });
+
+    logger.info(`Fetched ${unique.length} Kalshi sports markets (from ${totalFetched} total scanned)`);
+    return unique;
+  } catch (error) {
+    logger.error(`Kalshi sports markets fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
+ * Fetch ALL markets from Kalshi using pagination
+ * This gets markets beyond the default 200 limit
+ */
+export async function fetchAllKalshiMarkets(maxMarkets: number = 1000): Promise<Market[]> {
+  try {
+    const allMarkets: Market[] = [];
+    let cursor: string | null = null;
+    let totalFetched = 0;
+    const maxPages = Math.ceil(maxMarkets / 200);
+    let pages = 0;
+
+    while (pages < maxPages) {
+      const url = new URL('https://trading-api.kalshi.com/trade-api/v2/markets');
+      url.searchParams.set('limit', '200');
+      url.searchParams.set('status', 'active');
+      if (cursor) {
+        url.searchParams.set('cursor', cursor);
+      }
+
+      const response = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) {
+        logger.warn(`Kalshi fetch error: ${response.status}`);
+        break;
+      }
+
+      const data = await response.json() as {
+        markets?: unknown[];
+        cursor?: string;
+      };
+
+      const markets = data.markets ?? [];
+      if (markets.length === 0) break;
+
+      for (const m of markets) {
+        const market = m as Record<string, unknown>;
+        const ticker = (market.ticker as string ?? '');
+        const title = market.title as string ?? '';
+        const subtitle = market.subtitle as string ?? '';
+        const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+
+        allMarkets.push({
+          platform: 'kalshi' as const,
+          id: ticker,
+          ticker,
+          title: subtitle ? `${title} ${subtitle}` : title,
+          description: market.rules_primary as string,
+          category: categorizeMarket(title, ticker),
+          price: yesPrice / 100,
+          volume: (market.volume as number) ?? 0,
+          volume24h: (market.volume_24h as number) ?? 0,
+          liquidity: (market.open_interest as number) ?? 0,
+          url: buildKalshiUrl(ticker, title),
+          closeTime: market.close_time as string,
+        });
+      }
+
+      totalFetched += markets.length;
+      cursor = data.cursor ?? null;
+      pages++;
+
+      if (!cursor || totalFetched >= maxMarkets) break;
+    }
+
+    logger.info(`Fetched ${allMarkets.length} Kalshi markets (paginated)`);
+    return allMarkets;
+  } catch (error) {
+    logger.error(`Kalshi paginated fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
  * Fetch RT (Rotten Tomatoes) markets from Kalshi
  * RT markets use series tickers like KXRTPRIMATE, KXRTSEN (Send Help), etc.
  */
 export async function fetchKalshiRTMarkets(): Promise<Market[]> {
   try {
     // Find all RT-related series (series endpoint, not events)
-    const seriesResponse = await fetch('https://api.elections.kalshi.com/trade-api/v2/series?limit=500', {
+    const seriesResponse = await fetch('https://trading-api.kalshi.com/trade-api/v2/series?limit=500', {
       headers: { 'Accept': 'application/json' },
     });
 
@@ -137,7 +319,7 @@ export async function fetchKalshiRTMarkets(): Promise<Market[]> {
         batch.map(async (series) => {
           try {
             const marketsResponse = await fetch(
-              `https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`,
+              `https://trading-api.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`,
               { headers: { 'Accept': 'application/json' } }
             );
             if (!marketsResponse.ok) {

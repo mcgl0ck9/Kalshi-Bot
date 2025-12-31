@@ -27,7 +27,7 @@ import { logger, delay } from './utils/index.js';
 import { BANKROLL, CATEGORY_PRIORITIES, MIN_EDGE_THRESHOLD, ODDS_API_KEY } from './config.js';
 
 // Exchanges
-import { fetchKalshiMarkets, fetchPolymarketMarkets } from './exchanges/index.js';
+import { fetchKalshiMarkets, fetchPolymarketMarkets, fetchKalshiSportsMarkets, fetchAllKalshiMarkets } from './exchanges/index.js';
 
 // Fetchers
 import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges } from './fetchers/index.js';
@@ -137,16 +137,43 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // ========== STEP 1: FETCH PREDICTION MARKETS ==========
     logger.step(1, 'Fetching prediction markets...');
 
-    const [kalshiMarkets, polymarketMarkets] = await Promise.all([
-      fetchKalshiMarkets(500),  // Increased to capture entertainment/RT markets
+    // Fetch markets in parallel - try paginated first, fall back to dr-manhattan
+    let kalshiMarkets: Market[] = [];
+    let polymarketMarkets: Market[] = [];
+
+    // First try paginated fetch for broader coverage
+    const [kalshiGeneral, kalshiSports, polyMarkets] = await Promise.all([
+      fetchAllKalshiMarkets(1000).catch(() => [] as Market[]),
+      fetchKalshiSportsMarkets().catch(() => [] as Market[]),
       fetchPolymarketMarkets(100),
     ]);
+
+    polymarketMarkets = polyMarkets;
+
+    // Combine and deduplicate Kalshi markets
+    const seenKalshiTickers = new Set<string>();
+    for (const market of [...kalshiGeneral, ...kalshiSports]) {
+      const ticker = market.ticker ?? market.id;
+      if (!seenKalshiTickers.has(ticker)) {
+        seenKalshiTickers.add(ticker);
+        kalshiMarkets.push(market);
+      }
+    }
+
+    // Fall back to dr-manhattan if paginated fetch returned empty
+    if (kalshiMarkets.length === 0) {
+      logger.info('Paginated fetch empty, using dr-manhattan client...');
+      kalshiMarkets = await fetchKalshiMarkets(200);
+    }
 
     stats.kalshiMarkets = kalshiMarkets.length;
     stats.polymarketMarkets = polymarketMarkets.length;
     stats.totalMarkets = kalshiMarkets.length + polymarketMarkets.length;
 
-    logger.success(`Kalshi: ${kalshiMarkets.length} markets`);
+    const kalshiBreakdown = kalshiGeneral.length > 0 || kalshiSports.length > 0
+      ? `(${kalshiGeneral.length} general + ${kalshiSports.length} sports)`
+      : '(via dr-manhattan)';
+    logger.success(`Kalshi: ${kalshiMarkets.length} markets ${kalshiBreakdown}`);
     logger.success(`Polymarket: ${polymarketMarkets.length} markets`);
 
     // ========== STEP 2: FETCH NEWS ==========

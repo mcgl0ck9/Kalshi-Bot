@@ -356,7 +356,7 @@ export async function fetchFedMentionMarkets(): Promise<Market[]> {
   try {
     // First find the Fed mention series
     const seriesResponse = await fetch(
-      'https://api.elections.kalshi.com/trade-api/v2/series?limit=500',
+      'https://trading-api.kalshi.com/trade-api/v2/series?limit=500',
       { headers: { 'Accept': 'application/json' } }
     );
 
@@ -386,7 +386,7 @@ export async function fetchFedMentionMarkets(): Promise<Market[]> {
     for (const series of fedSeries) {
       try {
         const marketsResponse = await fetch(
-          `https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=100`,
+          `https://trading-api.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=100`,
           { headers: { 'Accept': 'application/json' } }
         );
 
