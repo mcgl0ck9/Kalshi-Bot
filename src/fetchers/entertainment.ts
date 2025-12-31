@@ -5,9 +5,17 @@
  * - Rotten Tomatoes scores (Tomatometer + Audience Score)
  * - Box Office data (opening weekend, total gross)
  * - Upcoming releases
+ *
+ * IMPROVED (v2):
+ * - TMDb API for reliable movie metadata
+ * - OMDB API as fallback for RT scores
+ * - Resilient fetch pattern with caching
  */
 
 import { logger, delay } from '../utils/index.js';
+import { fetchWithFallback, createSource } from '../utils/resilient-fetch.js';
+import * as tmdb from './tmdb.js';
+import * as omdb from './omdb.js';
 
 // =============================================================================
 // TYPES
@@ -20,6 +28,7 @@ export interface MovieScore {
   audienceScore?: number;      // Audience score 0-100
   certifiedFresh?: boolean;
   consensus?: string;
+  reviewCount?: number;        // Number of critic reviews
   url: string;
   fetchedAt: string;
 }
@@ -51,8 +60,66 @@ export interface UpcomingRelease {
  * Note: This scrapes the public page - respect rate limits
  */
 export async function fetchRottenTomatoesScore(movieSlug: string): Promise<MovieScore | null> {
+  const result = await fetchRTPage(movieSlug);
+  if (result) return result;
+
+  return null;
+}
+
+/**
+ * Fetch RT score with multiple slug variations
+ * Tries: base slug, slug_year (2024-2026), and search fallback
+ */
+export async function fetchRottenTomatoesScoreWithVariations(
+  title: string,
+  year?: number
+): Promise<MovieScore | null> {
+  const baseSlug = normalizeMovieTitle(title);
+
+  // Try exact slug first
+  let result = await fetchRTPage(baseSlug);
+  if (result && result.tomatometer !== undefined) return result;
+
+  // Try with year suffixes (common RT pattern)
+  const yearsToTry = year
+    ? [year, year - 1, year + 1]
+    : [2025, 2026, 2024];  // Default to recent years
+
+  for (const y of yearsToTry) {
+    const slugWithYear = `${baseSlug}_${y}`;
+    result = await fetchRTPage(slugWithYear);
+    if (result && result.tomatometer !== undefined) {
+      logger.info(`Found RT score for "${title}" at slug: ${slugWithYear}`);
+      return result;
+    }
+    await delay(200);  // Small delay between attempts
+  }
+
+  // Fallback: search RT and scrape first result
+  const searchResults = await searchRottenTomatoes(title);
+  if (searchResults.length > 0) {
+    // Extract slug from URL
+    const firstResult = searchResults[0];
+    const slugMatch = firstResult.url.match(/\/m\/([^/]+)/);
+    if (slugMatch) {
+      result = await fetchRTPage(slugMatch[1]);
+      if (result && result.tomatometer !== undefined) {
+        logger.info(`Found RT score for "${title}" via search: ${slugMatch[1]}`);
+        return result;
+      }
+    }
+  }
+
+  logger.debug(`Could not find RT score for "${title}" with any slug variation`);
+  return null;
+}
+
+/**
+ * Internal function to fetch and parse a single RT page
+ */
+async function fetchRTPage(slug: string): Promise<MovieScore | null> {
   try {
-    const url = `https://www.rottentomatoes.com/m/${movieSlug}`;
+    const url = `https://www.rottentomatoes.com/m/${slug}`;
 
     const response = await fetch(url, {
       headers: {
@@ -62,14 +129,34 @@ export async function fetchRottenTomatoesScore(movieSlug: string): Promise<Movie
     });
 
     if (!response.ok) {
-      logger.debug(`RT fetch failed for ${movieSlug}: ${response.status}`);
+      logger.debug(`RT fetch failed for ${slug}: ${response.status}`);
       return null;
     }
 
     const html = await response.text();
 
-    // Extract Tomatometer score
-    const tomatometerMatch = html.match(/(?:tomatometerscore|tomatometerScore)["\s:]+(\d+)/i);
+    // Try JSON-LD first (most reliable)
+    const jsonLdMatch = html.match(/<script type="application\/ld\+json">(\{[^<]+\})<\/script>/);
+    if (jsonLdMatch) {
+      try {
+        const jsonLd = JSON.parse(jsonLdMatch[1]);
+        if (jsonLd.aggregateRating?.ratingValue) {
+          const tomatometer = parseInt(jsonLd.aggregateRating.ratingValue, 10);
+          return {
+            title: jsonLd.name || slug,
+            tomatometer,
+            reviewCount: jsonLd.aggregateRating.ratingCount,
+            url,
+            fetchedAt: new Date().toISOString(),
+          };
+        }
+      } catch {
+        // JSON parse failed, try regex fallback
+      }
+    }
+
+    // Fallback: regex patterns
+    const tomatometerMatch = html.match(/(?:tomatometerscore|tomatometerScore|ratingValue)["\s:]+(\d+)/i);
     const tomatometer = tomatometerMatch ? parseInt(tomatometerMatch[1], 10) : undefined;
 
     // Extract Audience Score
@@ -79,7 +166,7 @@ export async function fetchRottenTomatoesScore(movieSlug: string): Promise<Movie
     // Extract title
     const titleMatch = html.match(/<h1[^>]*slot="titleIntro"[^>]*>([^<]+)</i) ||
                        html.match(/<title>([^|<]+)/i);
-    const title = titleMatch ? titleMatch[1].trim().replace(/ - Rotten Tomatoes$/, '') : movieSlug;
+    const title = titleMatch ? titleMatch[1].trim().replace(/ - Rotten Tomatoes$/, '') : slug;
 
     // Check for Certified Fresh
     const certifiedFresh = html.includes('certified-fresh') || html.includes('certified_fresh');
@@ -87,6 +174,14 @@ export async function fetchRottenTomatoesScore(movieSlug: string): Promise<Movie
     // Extract consensus
     const consensusMatch = html.match(/data-qa="critics-consensus">([^<]+)</i);
     const consensus = consensusMatch ? consensusMatch[1].trim() : undefined;
+
+    // Extract review count
+    const reviewCountMatch = html.match(/ratingCount["\s:]+(\d+)/i);
+    const reviewCount = reviewCountMatch ? parseInt(reviewCountMatch[1], 10) : undefined;
+
+    if (tomatometer === undefined) {
+      return null;
+    }
 
     return {
       title,
@@ -96,9 +191,10 @@ export async function fetchRottenTomatoesScore(movieSlug: string): Promise<Movie
       consensus,
       url,
       fetchedAt: new Date().toISOString(),
+      reviewCount,
     };
   } catch (error) {
-    logger.error(`RT scrape error for ${movieSlug}: ${error}`);
+    logger.error(`RT scrape error for ${slug}: ${error}`);
     return null;
   }
 }
@@ -332,7 +428,7 @@ export function extractMovieFromMarketTitle(marketTitle: string): {
 } | null {
   const lower = marketTitle.toLowerCase();
 
-  // Pattern: "Will X have a Rotten Tomatoes score above Y%?"
+  // Pattern 1: "Will X have a Rotten Tomatoes score above Y%?"
   const rtPattern = /(?:will\s+)?["']?([^"']+?)["']?\s+(?:have\s+)?(?:a\s+)?(?:rotten\s+tomatoes|rt)\s+(?:score\s+)?(?:above|over|at least|greater than)\s+(\d+)/i;
 
   const match = lower.match(rtPattern);
@@ -344,7 +440,19 @@ export function extractMovieFromMarketTitle(marketTitle: string): {
     };
   }
 
-  // Pattern: "X Rotten Tomatoes score"
+  // Pattern 2: "X Rotten Tomatoes score? Above Y" (Kalshi format)
+  // e.g., "Primate Rotten Tomatoes score? Above 85"
+  const kalshiPattern = /["']?([^"']+?)["']?\s+rotten\s+tomatoes\s+score\??\s+above\s+(\d+)/i;
+  const kalshiMatch = lower.match(kalshiPattern);
+  if (kalshiMatch) {
+    return {
+      movieTitle: kalshiMatch[1].trim(),
+      scoreType: lower.includes('audience') ? 'audience' : 'tomatometer',
+      threshold: parseInt(kalshiMatch[2], 10),
+    };
+  }
+
+  // Pattern 3: "X Rotten Tomatoes score" (no threshold, for general matching)
   const simplePattern = /["']?([^"']+?)["']?\s+rotten\s+tomatoes/i;
   const simpleMatch = lower.match(simplePattern);
   if (simpleMatch) {
@@ -426,6 +534,265 @@ export function formatWeekendBoxOfficeReport(data: BoxOfficeData[]): string {
   for (const movie of data.slice(0, 10)) {
     lines.push(formatBoxOffice(movie));
   }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
+// RESILIENT MOVIE DATA FETCHING (v2)
+// =============================================================================
+
+/**
+ * Enhanced movie score with source tracking
+ */
+export interface ResilientMovieScore extends MovieScore {
+  source: 'rotten_tomatoes' | 'omdb' | 'tmdb';
+  imdbRating?: number;
+  metacritic?: number;
+  tmdbRating?: number;
+  tmdbPopularity?: number;
+}
+
+/**
+ * Fetch movie score with fallback sources
+ *
+ * Priority:
+ * 1. Rotten Tomatoes (direct scrape) - most accurate
+ * 2. OMDB API - has RT scores via API
+ * 3. TMDb - has its own ratings
+ *
+ * Uses caching to avoid repeated API calls
+ */
+export async function fetchMovieScoreResilient(
+  title: string,
+  year?: number
+): Promise<ResilientMovieScore | null> {
+  const cacheKey = `movie:${title.toLowerCase()}:${year ?? 'any'}`;
+
+  const result = await fetchWithFallback<ResilientMovieScore>(
+    cacheKey,
+    [
+      // Source 1: Direct RT scraping (most accurate but fragile)
+      createSource('rotten_tomatoes', async () => {
+        const slug = normalizeMovieTitle(title);
+        const rtScore = await fetchRottenTomatoesScore(slug);
+
+        if (!rtScore || rtScore.tomatometer === undefined) {
+          return null;
+        }
+
+        return {
+          ...rtScore,
+          source: 'rotten_tomatoes' as const,
+        };
+      }, 1),
+
+      // Source 2: OMDB API (reliable, has RT scores)
+      createSource('omdb', async () => {
+        const omdbData = await omdb.getMovieByTitle(title, year);
+
+        if (!omdbData || omdbData.rottenTomatoes === undefined) {
+          return null;
+        }
+
+        return {
+          title: omdbData.title,
+          year: parseInt(omdbData.year, 10) || undefined,
+          tomatometer: omdbData.rottenTomatoes,
+          url: `https://www.rottentomatoes.com/search?search=${encodeURIComponent(title)}`,
+          fetchedAt: new Date().toISOString(),
+          source: 'omdb' as const,
+          imdbRating: omdbData.imdb,
+          metacritic: omdbData.metacritic,
+        };
+      }, 2),
+
+      // Source 3: TMDb (always available, different rating system)
+      createSource('tmdb', async () => {
+        const tmdbData = await tmdb.findMovieByTitle(title, year);
+
+        if (!tmdbData) {
+          return null;
+        }
+
+        // TMDb uses 0-10 scale, estimate RT equivalent
+        // This is a rough approximation: 7.0+ on TMDb ~ 70%+ on RT
+        const estimatedRT = tmdbData.voteCount > 100
+          ? Math.round(tmdbData.voteAverage * 10)
+          : undefined;
+
+        return {
+          title: tmdbData.title,
+          year: tmdbData.releaseDate ? parseInt(tmdbData.releaseDate.split('-')[0], 10) : undefined,
+          tomatometer: estimatedRT,
+          url: `https://www.themoviedb.org/movie/${tmdbData.id}`,
+          fetchedAt: new Date().toISOString(),
+          source: 'tmdb' as const,
+          tmdbRating: tmdbData.voteAverage,
+          tmdbPopularity: tmdbData.popularity,
+        };
+      }, 3),
+    ],
+    {
+      cacheTTL: 30 * 60 * 1000,  // 30 minutes
+      useStaleOnError: true,
+      staleTTL: 24 * 60 * 60 * 1000,  // 24 hours
+    }
+  );
+
+  if (!result) {
+    logger.warn(`Failed to fetch movie score for "${title}" from all sources`);
+    return null;
+  }
+
+  logger.info(`Movie score for "${title}": ${result.data.tomatometer ?? 'N/A'}% (source: ${result.source})`);
+  return result.data;
+}
+
+/**
+ * Fetch comprehensive movie data from multiple sources
+ * Merges data from RT, OMDB, and TMDb
+ */
+export interface ComprehensiveMovieData {
+  title: string;
+  year?: number;
+  // Scores
+  rottenTomatoes?: number;
+  audienceScore?: number;
+  imdbRating?: number;
+  metacritic?: number;
+  tmdbRating?: number;
+  reviewCount?: number;        // Number of RT critic reviews
+  // Box office
+  boxOffice?: number;
+  budget?: number;
+  revenue?: number;
+  // Metadata
+  runtime?: number;
+  genres?: string[];
+  director?: string;
+  // Awards
+  awards?: string;
+  hasOscarWin?: boolean;
+  hasOscarNom?: boolean;
+  // Sources used
+  sources: string[];
+  fetchedAt: string;
+}
+
+export async function fetchComprehensiveMovieData(
+  title: string,
+  year?: number
+): Promise<ComprehensiveMovieData | null> {
+  const data: ComprehensiveMovieData = {
+    title,
+    year,
+    sources: [],
+    fetchedAt: new Date().toISOString(),
+  };
+
+  // Fetch from all sources in parallel
+  // Use variations function for RT to handle year suffixes (e.g., primate_2025)
+  const [rtResult, omdbResult, tmdbResult] = await Promise.all([
+    fetchRottenTomatoesScoreWithVariations(title, year).catch(() => null),
+    omdb.getMovieByTitle(title, year).catch(() => null),
+    tmdb.findMovieByTitle(title, year).catch(() => null),
+  ]);
+
+  // Merge Rotten Tomatoes data
+  if (rtResult) {
+    data.rottenTomatoes = rtResult.tomatometer;
+    data.audienceScore = rtResult.audienceScore;
+    data.reviewCount = rtResult.reviewCount;
+    data.sources.push('rotten_tomatoes');
+  }
+
+  // Merge OMDB data
+  if (omdbResult) {
+    data.rottenTomatoes = data.rottenTomatoes ?? omdbResult.rottenTomatoes;
+    data.imdbRating = omdbResult.imdb;
+    data.metacritic = omdbResult.metacritic;
+    data.boxOffice = omdb.parseBoxOffice(omdbResult.boxOffice) ?? undefined;
+    data.runtime = omdb.parseRuntime(omdbResult.runtime) ?? undefined;
+    data.director = omdbResult.director !== 'N/A' ? omdbResult.director : undefined;
+    data.awards = omdbResult.awards !== 'N/A' ? omdbResult.awards : undefined;
+
+    const awardsInfo = omdb.hasAwardsRecognition(omdbResult);
+    data.hasOscarWin = awardsInfo.hasOscar;
+    data.hasOscarNom = awardsInfo.hasNominations;
+
+    data.sources.push('omdb');
+  }
+
+  // Merge TMDb data
+  if (tmdbResult) {
+    data.tmdbRating = tmdbResult.voteAverage;
+    data.budget = tmdbResult.budget > 0 ? tmdbResult.budget : undefined;
+    data.revenue = tmdbResult.revenue > 0 ? tmdbResult.revenue : undefined;
+    data.runtime = data.runtime ?? tmdbResult.runtime ?? undefined;
+    data.genres = tmdbResult.genres.length > 0 ? tmdbResult.genres : undefined;
+    data.year = data.year ?? (tmdbResult.releaseDate ? parseInt(tmdbResult.releaseDate.split('-')[0], 10) : undefined);
+    data.sources.push('tmdb');
+  }
+
+  // Return null if no data was found
+  if (data.sources.length === 0) {
+    return null;
+  }
+
+  return data;
+}
+
+/**
+ * Format comprehensive movie data for display
+ */
+export function formatComprehensiveMovieData(data: ComprehensiveMovieData): string {
+  const lines: string[] = [`**${data.title}** (${data.year ?? 'Unknown year'})`];
+
+  // Scores section
+  const scores: string[] = [];
+  if (data.rottenTomatoes !== undefined) {
+    const icon = data.rottenTomatoes >= 60 ? '🍅' : '🤢';
+    scores.push(`${icon} RT: ${data.rottenTomatoes}%`);
+  }
+  if (data.audienceScore !== undefined) {
+    scores.push(`🍿 Aud: ${data.audienceScore}%`);
+  }
+  if (data.imdbRating !== undefined) {
+    scores.push(`⭐ IMDB: ${data.imdbRating}`);
+  }
+  if (data.metacritic !== undefined) {
+    scores.push(`📊 MC: ${data.metacritic}`);
+  }
+  if (scores.length > 0) {
+    lines.push(scores.join(' | '));
+  }
+
+  // Box office
+  if (data.boxOffice || data.revenue) {
+    const amount = data.boxOffice ?? data.revenue!;
+    lines.push(`💰 Box Office: $${(amount / 1_000_000).toFixed(1)}M`);
+  }
+
+  // Budget
+  if (data.budget) {
+    lines.push(`📽️ Budget: $${(data.budget / 1_000_000).toFixed(0)}M`);
+  }
+
+  // Awards
+  if (data.hasOscarWin) {
+    lines.push('🏆 Oscar Winner');
+  } else if (data.hasOscarNom) {
+    lines.push('🎖️ Oscar Nominated');
+  }
+
+  // Genres
+  if (data.genres && data.genres.length > 0) {
+    lines.push(`🎭 ${data.genres.slice(0, 3).join(', ')}`);
+  }
+
+  // Sources
+  lines.push(`_Sources: ${data.sources.join(', ')}_`);
 
   return lines.join('\n');
 }

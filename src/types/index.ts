@@ -99,6 +99,12 @@ export interface EdgeOpportunity {
       convictionStrength: number;
       topWhaleCount: number;
     };
+    // Fed speech keyword analysis
+    fedSpeech?: {
+      keyword: string;
+      historicalFrequency: number;
+      reasoning: string;
+    };
   };
   sizing?: PositionSizing;
 }

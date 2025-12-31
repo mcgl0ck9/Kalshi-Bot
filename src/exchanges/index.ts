@@ -77,6 +77,134 @@ export async function fetchKalshiMarkets(limit: number = 100): Promise<Market[]>
 }
 
 /**
+ * Fetch RT (Rotten Tomatoes) markets from Kalshi
+ * RT markets use series tickers like KXRTPRIMATE, KXRTSEN (Send Help), etc.
+ */
+export async function fetchKalshiRTMarkets(): Promise<Market[]> {
+  try {
+    // Find all RT-related series (series endpoint, not events)
+    const seriesResponse = await fetch('https://api.elections.kalshi.com/trade-api/v2/series?limit=500', {
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!seriesResponse.ok) {
+      logger.warn(`Failed to fetch series: ${seriesResponse.status}`);
+      return [];
+    }
+
+    const seriesData = await seriesResponse.json() as { series?: Array<{ ticker: string; title: string }> };
+    const allSeries = seriesData.series ?? [];
+
+    // Find RT-related series (ticker contains KXRT or title mentions Rotten Tomatoes)
+    const rtSeries = allSeries.filter(s =>
+      s.ticker?.includes('KXRT') ||
+      s.title?.toLowerCase().includes('rotten tomatoes')
+    );
+
+    logger.info(`Found ${rtSeries.length} RT-related series`);
+
+    // Prioritize series with certain keywords (likely active movies)
+    const prioritizedSeries = rtSeries.sort((a, b) => {
+      // Push series with common movie names to front
+      const priorityKeywords = ['primate', 'send', 'running', 'amateur', 'soulm8te'];
+      const aHasPriority = priorityKeywords.some(k => a.ticker.toLowerCase().includes(k));
+      const bHasPriority = priorityKeywords.some(k => b.ticker.toLowerCase().includes(k));
+      if (aHasPriority && !bHasPriority) return -1;
+      if (bHasPriority && !aHasPriority) return 1;
+      return 0;
+    });
+
+    // Batch fetch markets for RT series (fetch in parallel batches)
+    const allMarkets: Market[] = [];
+    const batchSize = 10;
+
+    // Log first 10 prioritized series for debugging
+    logger.info(`First 10 prioritized RT series: ${prioritizedSeries.slice(0, 10).map(s => s.ticker).join(', ')}`);
+
+    // Always fetch Primate specifically (known edge opportunity)
+    const primateIdx = prioritizedSeries.findIndex(s => s.ticker === 'KXRTPRIMATE');
+    if (primateIdx > 10) {
+      // Move Primate to front if it's not already in first 10
+      const primate = prioritizedSeries[primateIdx];
+      prioritizedSeries.splice(primateIdx, 1);
+      prioritizedSeries.unshift(primate);
+      logger.info(`Moved KXRTPRIMATE to front (was at index ${primateIdx})`);
+    }
+
+    for (let i = 0; i < Math.min(prioritizedSeries.length, 100); i += batchSize) {  // Increased to 100 series
+      const batch = prioritizedSeries.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (series) => {
+          try {
+            const marketsResponse = await fetch(
+              `https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`,
+              { headers: { 'Accept': 'application/json' } }
+            );
+            if (!marketsResponse.ok) {
+              logger.debug(`Failed to fetch markets for ${series.ticker}: ${marketsResponse.status}`);
+              return [];
+            }
+            const data = await marketsResponse.json() as { markets?: unknown[] };
+            const markets = data.markets ?? [];
+            if (markets.length > 0) {
+              logger.info(`  📊 ${series.ticker}: ${markets.length} markets found`);
+            }
+            return markets;
+          } catch (e) {
+            logger.debug(`Error fetching ${series.ticker}: ${e}`);
+            return [];
+          }
+        })
+      );
+
+      for (const markets of batchResults) {
+        for (const m of markets) {
+          const market = m as Record<string, unknown>;
+          const ticker = market.ticker as string ?? '';
+          const title = market.title as string ?? '';
+          const subtitle = market.subtitle as string ?? '';
+          const status = market.status as string ?? '';
+
+          // Debug: log Primate markets specifically
+          if (ticker.includes('PRIMATE')) {
+            logger.info(`    Primate market ${ticker}: status=${status}`);
+          }
+
+          if (status !== 'active') continue;
+
+          // Combine title and subtitle for full market description
+          // e.g., "Primate Rotten Tomatoes score?" + "Above 85" = threshold of 85
+          const fullTitle = subtitle ? `${title} ${subtitle}` : title;
+
+          const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+
+          allMarkets.push({
+            platform: 'kalshi' as const,
+            id: ticker,
+            ticker,
+            title: fullTitle,
+            description: market.rules_primary as string,
+            category: 'entertainment' as MarketCategory,
+            price: yesPrice / 100,  // Kalshi prices are in cents
+            volume: (market.volume as number) ?? 0,
+            volume24h: (market.volume_24h as number) ?? 0,
+            liquidity: (market.open_interest as number) ?? 0,
+            url: buildKalshiUrl(ticker, title),
+            closeTime: market.close_time as string,
+          });
+        }
+      }
+    }
+
+    logger.info(`Fetched ${allMarkets.length} Kalshi RT markets`);
+    return allMarkets;
+  } catch (error) {
+    logger.error(`Kalshi RT markets fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
  * Fetch markets from Polymarket
  */
 export async function fetchPolymarketMarkets(limit: number = 100): Promise<Market[]> {
@@ -228,7 +356,7 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
     crypto: ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto'],
     macro: ['fed', 'inflation', 'rate cut', 'recession', 'cpi', 'gdp', 'jobs report'],
     sports: ['nfl', 'nba', 'mlb', 'super bowl', 'world series', 'championship'],
-    entertainment: ['oscar', 'grammy', 'emmy', 'movie', 'box office', 'album'],
+    entertainment: ['oscar', 'grammy', 'emmy', 'movie', 'box office', 'album', 'rotten tomatoes', 'tomatometer', 'rt score'],
     geopolitics: ['ukraine', 'russia', 'china', 'israel', 'gaza', 'war', 'invasion', 'tariff'],
     weather: ['hurricane', 'temperature', 'weather', 'storm'],
     tech: ['ipo', 'ai ', 'artificial intelligence', 'openai'],

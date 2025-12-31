@@ -11,10 +11,47 @@
  * - Fuzzy number matching ($200K = 200,000 = 200000)
  * - Semantic topic extraction
  * - Category-aware boosting
+ *
+ * IMPROVED MATCHING (v3):
+ * - Unified team database from src/data/teams.ts
+ * - Standard abbreviations (NYG, LAL, etc.)
+ * - College sports with 2024-25 conference realignment
  */
 
 import type { Market, CrossPlatformMatch } from '../types/index.js';
 import { logger } from '../utils/index.js';
+import {
+  NFL_TEAMS,
+  NBA_TEAMS,
+  MLB_TEAMS,
+  NHL_TEAMS,
+  NCAAF_TEAMS,
+  NCAAB_TEAMS,
+  NFL_TEAM_KEYS,
+  NBA_TEAM_KEYS,
+  MLB_TEAM_KEYS,
+  NHL_TEAM_KEYS,
+  NCAAF_TEAM_KEYS,
+  NCAAB_TEAM_KEYS,
+  ALL_SPORTS_TEAM_KEYS,
+  type LeagueTeams,
+} from '../data/teams.js';
+
+// =============================================================================
+// HELPER: Build entity aliases from teams module
+// =============================================================================
+
+function buildTeamEntityAliases(teams: LeagueTeams): Record<string, string[]> {
+  const aliases: Record<string, string[]> = {};
+  for (const [teamKey, info] of Object.entries(teams)) {
+    // Combine aliases and abbreviations (lowercase)
+    aliases[teamKey] = [
+      ...info.aliases,
+      ...info.abbreviations.map(a => a.toLowerCase()),
+    ];
+  }
+  return aliases;
+}
 
 // =============================================================================
 // ENTITY EXTRACTION (EXPANDED)
@@ -196,254 +233,28 @@ const ENTITY_ALIASES: Record<string, string[]> = {
   autonomous: ['autonomous', 'self-driving', 'autopilot'],
   quantum: ['quantum', 'quantum computing', 'qubit'],
 
-  // NFL Teams (32) - Using team names and full city names only (no short abbreviations)
-  // AFC East
-  bills: ['bills', 'buffalo bills', 'buffalo'],
-  dolphins: ['dolphins', 'miami dolphins'],
-  patriots: ['patriots', 'new england patriots', 'pats'],
-  jets: ['jets', 'new york jets', 'ny jets'],
-  // AFC North
-  ravens: ['ravens', 'baltimore ravens', 'baltimore'],
-  bengals: ['bengals', 'cincinnati bengals', 'cincinnati', 'cincy'],
-  browns: ['browns', 'cleveland browns', 'cleveland'],
-  steelers: ['steelers', 'pittsburgh steelers', 'pittsburgh'],
-  // AFC South
-  texans: ['texans', 'houston texans', 'houston'],
-  colts: ['colts', 'indianapolis colts', 'indianapolis', 'indy'],
-  jaguars: ['jaguars', 'jacksonville jaguars', 'jacksonville', 'jags'],
-  titans: ['titans', 'tennessee titans', 'tennessee'],
-  // AFC West
-  broncos: ['broncos', 'denver broncos', 'denver'],
-  chiefs: ['chiefs', 'kansas city chiefs', 'kansas city'],
-  raiders: ['raiders', 'las vegas raiders', 'oakland raiders'],
-  chargers: ['chargers', 'los angeles chargers', 'la chargers'],
-  // NFC East
-  cowboys: ['cowboys', 'dallas cowboys', 'dallas'],
-  giants: ['giants', 'new york giants', 'ny giants'],
-  eagles: ['eagles', 'philadelphia eagles', 'philadelphia', 'philly'],
-  commanders: ['commanders', 'washington commanders', 'redskins'],
-  // NFC North
-  bears: ['bears', 'chicago bears'],
-  lions: ['lions', 'detroit lions', 'detroit'],
-  packers: ['packers', 'green bay packers', 'green bay'],
-  vikings: ['vikings', 'minnesota vikings', 'minnesota'],
-  // NFC South
-  falcons: ['falcons', 'atlanta falcons', 'atlanta'],
-  panthers: ['panthers', 'carolina panthers', 'carolina'],
-  saints: ['saints', 'new orleans saints', 'nola'],
-  buccaneers: ['buccaneers', 'tampa bay buccaneers', 'tampa bay', 'bucs'],
-  // NFC West
-  cardinals: ['cardinals', 'arizona cardinals', 'arizona'],
-  rams: ['rams', 'los angeles rams', 'la rams'],
-  niners: ['49ers', 'niners', 'san francisco 49ers', 'san francisco'],
-  seahawks: ['seahawks', 'seattle seahawks', 'seattle'],
+  // ==========================================================================
+  // SPORTS TEAMS - Imported from unified teams.ts module
+  // Includes all standard abbreviations (NYG, LAL, etc.)
+  // ==========================================================================
 
-  // NBA Teams (30)
-  // Atlantic Division
-  celtics: ['celtics', 'boston celtics', 'boston'],
-  nets: ['nets', 'brooklyn nets', 'brooklyn'],
-  knicks: ['knicks', 'new york knicks', 'ny knicks'],
-  sixers: ['76ers', 'sixers', 'philadelphia 76ers', 'philly'],
-  raptors: ['raptors', 'toronto raptors', 'toronto'],
-  // Central Division
-  bulls: ['bulls', 'chicago bulls'],
-  cavaliers: ['cavaliers', 'cleveland cavaliers', 'cleveland', 'cavs'],
-  pistons: ['pistons', 'detroit pistons', 'detroit'],
-  pacers: ['pacers', 'indiana pacers', 'indiana'],
-  bucks: ['bucks', 'milwaukee bucks', 'milwaukee'],
-  // Southeast Division
-  hawks: ['hawks', 'atlanta hawks', 'atlanta'],
-  hornets: ['hornets', 'charlotte hornets', 'charlotte'],
-  heat: ['heat', 'miami heat'],
-  magic: ['magic', 'orlando magic', 'orlando'],
-  wizards: ['wizards', 'washington wizards'],
-  // Northwest Division
-  nuggets: ['nuggets', 'denver nuggets', 'denver'],
-  timberwolves: ['timberwolves', 'minnesota timberwolves', 'minnesota', 'wolves'],
-  thunder: ['thunder', 'oklahoma city thunder', 'oklahoma city', 'okc'],
-  blazers: ['trail blazers', 'blazers', 'portland trail blazers', 'portland'],
-  jazz: ['jazz', 'utah jazz', 'utah'],
-  // Pacific Division
-  warriors: ['warriors', 'golden state warriors', 'golden state', 'gsw'],
-  clippers: ['clippers', 'los angeles clippers', 'la clippers'],
-  lakers: ['lakers', 'los angeles lakers', 'la lakers'],
-  suns: ['suns', 'phoenix suns', 'phoenix'],
-  kings: ['kings', 'sacramento kings', 'sacramento'],
-  // Southwest Division
-  mavericks: ['mavericks', 'dallas mavericks', 'dallas', 'mavs'],
-  rockets: ['rockets', 'houston rockets', 'houston'],
-  grizzlies: ['grizzlies', 'memphis grizzlies', 'memphis'],
-  pelicans: ['pelicans', 'new orleans pelicans', 'new orleans'],
-  spurs: ['spurs', 'san antonio spurs', 'san antonio'],
+  // NFL Teams (32) - with abbreviations
+  ...buildTeamEntityAliases(NFL_TEAMS),
 
-  // MLB Teams (30)
-  // AL East
-  orioles: ['orioles', 'baltimore orioles', 'baltimore'],
-  redsox: ['red sox', 'redsox', 'boston red sox', 'boston'],
-  yankees: ['yankees', 'new york yankees', 'ny yankees'],
-  rays: ['rays', 'tampa bay rays', 'tampa bay'],
-  bluejays: ['blue jays', 'bluejays', 'toronto blue jays', 'toronto'],
-  // AL Central
-  whitesox: ['white sox', 'whitesox', 'chicago white sox'],
-  guardians: ['guardians', 'cleveland guardians', 'cleveland'],
-  tigers: ['tigers', 'detroit tigers', 'detroit'],
-  royals: ['royals', 'kansas city royals', 'kansas city'],
-  twins: ['twins', 'minnesota twins', 'minnesota'],
-  // AL West
-  astros: ['astros', 'houston astros', 'houston'],
-  angels: ['angels', 'los angeles angels', 'la angels', 'anaheim angels'],
-  athletics: ['athletics', 'oakland athletics', 'oakland', "a's"],
-  mariners: ['mariners', 'seattle mariners', 'seattle'],
-  rangers: ['rangers', 'texas rangers', 'texas'],
-  // NL East
-  braves: ['braves', 'atlanta braves', 'atlanta'],
-  marlins: ['marlins', 'miami marlins'],
-  mets: ['mets', 'new york mets', 'ny mets'],
-  phillies: ['phillies', 'philadelphia phillies', 'philadelphia'],
-  nationals: ['nationals', 'washington nationals', 'nats'],
-  // NL Central
-  cubs: ['cubs', 'chicago cubs'],
-  reds: ['reds', 'cincinnati reds', 'cincinnati'],
-  brewers: ['brewers', 'milwaukee brewers', 'milwaukee'],
-  pirates: ['pirates', 'pittsburgh pirates', 'pittsburgh'],
-  cardinals_mlb: ['cardinals', 'st louis cardinals', 'st. louis cardinals'],
-  // NL West
-  diamondbacks: ['diamondbacks', 'd-backs', 'dbacks', 'arizona diamondbacks', 'arizona'],
-  rockies: ['rockies', 'colorado rockies', 'colorado'],
-  dodgers: ['dodgers', 'los angeles dodgers', 'la dodgers'],
-  padres: ['padres', 'san diego padres', 'san diego'],
-  giants_mlb: ['giants', 'san francisco giants', 'san francisco'],
+  // NBA Teams (30) - with abbreviations
+  ...buildTeamEntityAliases(NBA_TEAMS),
 
-  // NHL Teams (32)
-  // Atlantic Division
-  bruins: ['bruins', 'boston bruins', 'boston'],
-  sabres: ['sabres', 'buffalo sabres', 'buffalo'],
-  red_wings: ['red wings', 'detroit red wings', 'detroit'],
-  panthers_nhl: ['panthers', 'florida panthers', 'florida'],
-  canadiens: ['canadiens', 'montreal canadiens', 'montreal', 'habs'],
-  senators: ['senators', 'ottawa senators', 'ottawa'],
-  lightning: ['lightning', 'tampa bay lightning', 'tampa bay', 'bolts'],
-  maple_leafs: ['maple leafs', 'toronto maple leafs', 'toronto', 'leafs'],
-  // Metropolitan Division
-  hurricanes: ['hurricanes', 'carolina hurricanes', 'carolina', 'canes'],
-  blue_jackets: ['blue jackets', 'columbus blue jackets', 'columbus'],
-  devils: ['devils', 'new jersey devils', 'new jersey'],
-  islanders: ['islanders', 'new york islanders', 'ny islanders'],
-  rangers_nhl: ['rangers', 'new york rangers', 'ny rangers'],
-  flyers: ['flyers', 'philadelphia flyers', 'philadelphia', 'philly'],
-  penguins: ['penguins', 'pittsburgh penguins', 'pittsburgh', 'pens'],
-  capitals: ['capitals', 'washington capitals', 'caps'],
-  // Central Division
-  coyotes: ['coyotes', 'utah hockey club', 'arizona coyotes', 'utah'],
-  blackhawks: ['blackhawks', 'chicago blackhawks', 'hawks'],
-  avalanche: ['avalanche', 'colorado avalanche', 'colorado', 'avs'],
-  stars: ['stars', 'dallas stars', 'dallas'],
-  wild: ['wild', 'minnesota wild', 'minnesota'],
-  predators: ['predators', 'nashville predators', 'nashville', 'preds'],
-  blues: ['blues', 'st louis blues', 'st. louis blues'],
-  jets_nhl: ['jets', 'winnipeg jets', 'winnipeg'],
-  // Pacific Division
-  ducks: ['ducks', 'anaheim ducks', 'anaheim'],
-  flames: ['flames', 'calgary flames', 'calgary'],
-  oilers: ['oilers', 'edmonton oilers', 'edmonton'],
-  kings_nhl: ['kings', 'los angeles kings', 'la kings'],
-  sharks: ['sharks', 'san jose sharks', 'san jose'],
-  kraken: ['kraken', 'seattle kraken', 'seattle'],
-  canucks: ['canucks', 'vancouver canucks', 'vancouver'],
-  golden_knights: ['golden knights', 'vegas golden knights', 'vegas', 'vgk'],
+  // MLB Teams (30) - with abbreviations
+  ...buildTeamEntityAliases(MLB_TEAMS),
 
-  // NCAAF - College Football (Major Programs)
-  // SEC
-  alabama: ['alabama', 'crimson tide', 'bama', 'roll tide'],
-  auburn: ['auburn', 'auburn tigers', 'war eagle'],
-  florida_gators: ['florida', 'florida gators', 'gators'],
-  georgia: ['georgia', 'georgia bulldogs', 'bulldogs', 'uga', 'dawgs'],
-  lsu: ['lsu', 'louisiana state', 'tigers', 'geaux tigers'],
-  ole_miss: ['ole miss', 'mississippi', 'rebels'],
-  mississippi_state: ['mississippi state', 'bulldogs', 'miss state'],
-  tennessee: ['tennessee', 'volunteers', 'vols'],
-  texas_am: ['texas a&m', 'aggies', 'tamu'],
-  kentucky: ['kentucky', 'wildcats', 'uk'],
-  missouri: ['missouri', 'mizzou', 'tigers'],
-  south_carolina: ['south carolina', 'gamecocks'],
-  arkansas: ['arkansas', 'razorbacks', 'hogs'],
-  vanderbilt: ['vanderbilt', 'commodores', 'vandy'],
-  texas_longhorns: ['texas', 'longhorns', 'hook em', 'ut'],
-  oklahoma: ['oklahoma', 'sooners', 'boomer sooner', 'ou'],
-  // Big Ten
-  ohio_state: ['ohio state', 'buckeyes', 'osu'],
-  michigan: ['michigan', 'wolverines', 'go blue'],
-  penn_state: ['penn state', 'nittany lions', 'psu'],
-  michigan_state: ['michigan state', 'spartans', 'msu'],
-  wisconsin: ['wisconsin', 'badgers'],
-  iowa: ['iowa', 'hawkeyes'],
-  minnesota_gophers: ['minnesota', 'golden gophers', 'gophers'],
-  nebraska: ['nebraska', 'cornhuskers', 'huskers'],
-  illinois: ['illinois', 'fighting illini', 'illini'],
-  purdue: ['purdue', 'boilermakers'],
-  indiana: ['indiana', 'hoosiers'],
-  northwestern: ['northwestern', 'wildcats'],
-  rutgers: ['rutgers', 'scarlet knights'],
-  maryland: ['maryland', 'terrapins', 'terps'],
-  usc: ['usc', 'trojans', 'southern cal'],
-  ucla: ['ucla', 'bruins'],
-  oregon: ['oregon', 'ducks'],
-  washington_huskies: ['washington', 'huskies', 'uw'],
-  // ACC
-  clemson: ['clemson', 'tigers'],
-  florida_state: ['florida state', 'seminoles', 'fsu', 'noles'],
-  miami_hurricanes: ['miami', 'hurricanes', 'the u'],
-  nc_state: ['nc state', 'wolfpack'],
-  north_carolina: ['north carolina', 'tar heels', 'unc'],
-  duke: ['duke', 'blue devils'],
-  wake_forest: ['wake forest', 'demon deacons'],
-  virginia: ['virginia', 'cavaliers', 'uva', 'wahoos'],
-  virginia_tech: ['virginia tech', 'hokies', 'vt'],
-  louisville: ['louisville', 'cardinals'],
-  pittsburgh: ['pittsburgh', 'pitt', 'panthers'],
-  syracuse: ['syracuse', 'orange', 'cuse'],
-  boston_college: ['boston college', 'eagles', 'bc'],
-  georgia_tech: ['georgia tech', 'yellow jackets', 'gt'],
-  notre_dame: ['notre dame', 'fighting irish', 'irish', 'nd'],
-  // Big 12
-  baylor: ['baylor', 'bears'],
-  tcu: ['tcu', 'horned frogs'],
-  texas_tech: ['texas tech', 'red raiders'],
-  kansas: ['kansas', 'jayhawks', 'ku'],
-  kansas_state: ['kansas state', 'wildcats', 'k-state'],
-  iowa_state: ['iowa state', 'cyclones'],
-  oklahoma_state: ['oklahoma state', 'cowboys', 'osu'],
-  west_virginia: ['west virginia', 'mountaineers', 'wvu'],
-  cincinnati: ['cincinnati', 'bearcats', 'cincy'],
-  ucf: ['ucf', 'knights', 'central florida'],
-  houston_cougars: ['houston', 'cougars', 'uh'],
-  byu: ['byu', 'cougars', 'brigham young'],
-  colorado_buffs: ['colorado', 'buffaloes', 'buffs'],
-  arizona_state: ['arizona state', 'sun devils', 'asu'],
-  arizona_wildcats: ['arizona', 'wildcats'],
-  utah_utes: ['utah', 'utes'],
-  // Pac-12 remnants & others
-  stanford: ['stanford', 'cardinal'],
-  cal: ['cal', 'california', 'golden bears'],
-  oregon_state: ['oregon state', 'beavers'],
-  washington_state: ['washington state', 'cougars', 'wsu'],
+  // NHL Teams (32) - with abbreviations
+  ...buildTeamEntityAliases(NHL_TEAMS),
+
+  // NCAAF - College Football (Major Programs) - with 2024-25 realignment
+  ...buildTeamEntityAliases(NCAAF_TEAMS),
 
   // NCAAB - College Basketball (Major Programs)
-  // Already have most from football, adding basketball-specific
-  gonzaga: ['gonzaga', 'bulldogs', 'zags'],
-  villanova: ['villanova', 'wildcats', 'nova'],
-  uconn: ['uconn', 'huskies', 'connecticut'],
-  creighton: ['creighton', 'bluejays'],
-  marquette: ['marquette', 'golden eagles'],
-  st_johns: ['st johns', "st. john's", 'red storm', 'johnnies'],
-  seton_hall: ['seton hall', 'pirates'],
-  xavier: ['xavier', 'musketeers'],
-  butler: ['butler', 'bulldogs'],
-  providence: ['providence', 'friars'],
-  memphis_tigers: ['memphis', 'tigers'],
-  san_diego_state: ['san diego state', 'aztecs', 'sdsu'],
-  dayton: ['dayton', 'flyers'],
-  saint_marys: ["saint mary's", 'gaels', 'st marys'],
+  ...buildTeamEntityAliases(NCAAB_TEAMS),
 
   // Market Cap / Company Rankings
   marketcap: ['market cap', 'largest company', 'most valuable', 'market capitalization', 'trillion'],
@@ -544,67 +355,12 @@ function extractKeyEntities(title: string): Set<string> {
   return entities;
 }
 
-// All sports team entity keys for matchup detection
-const NFL_TEAMS = new Set([
-  'bills', 'dolphins', 'patriots', 'jets', 'ravens', 'bengals', 'browns', 'steelers',
-  'texans', 'colts', 'jaguars', 'titans', 'broncos', 'chiefs', 'raiders', 'chargers',
-  'cowboys', 'giants', 'eagles', 'commanders', 'bears', 'lions', 'packers', 'vikings',
-  'falcons', 'panthers', 'saints', 'buccaneers', 'cardinals', 'rams', 'niners', 'seahawks',
-]);
+// =============================================================================
+// SPORTS TEAM SETS - Now imported from unified teams.ts module
+// =============================================================================
 
-const NBA_TEAMS = new Set([
-  'celtics', 'nets', 'knicks', 'sixers', 'raptors', 'bulls', 'cavaliers', 'pistons',
-  'pacers', 'bucks', 'hawks', 'hornets', 'heat', 'magic', 'wizards', 'nuggets',
-  'timberwolves', 'thunder', 'blazers', 'jazz', 'warriors', 'clippers', 'lakers',
-  'suns', 'kings', 'mavericks', 'rockets', 'grizzlies', 'pelicans', 'spurs',
-]);
-
-const MLB_TEAMS = new Set([
-  'orioles', 'redsox', 'yankees', 'rays', 'bluejays', 'whitesox', 'guardians', 'tigers',
-  'royals', 'twins', 'astros', 'angels', 'athletics', 'mariners', 'rangers', 'braves',
-  'marlins', 'mets', 'phillies', 'nationals', 'cubs', 'reds', 'brewers', 'pirates',
-  'cardinals_mlb', 'diamondbacks', 'rockies', 'dodgers', 'padres', 'giants_mlb',
-]);
-
-const NHL_TEAMS = new Set([
-  'bruins', 'sabres', 'red_wings', 'panthers_nhl', 'canadiens', 'senators', 'lightning', 'maple_leafs',
-  'hurricanes', 'blue_jackets', 'devils', 'islanders', 'rangers_nhl', 'flyers', 'penguins', 'capitals',
-  'coyotes', 'blackhawks', 'avalanche', 'stars', 'wild', 'predators', 'blues', 'jets_nhl',
-  'ducks', 'flames', 'oilers', 'kings_nhl', 'sharks', 'kraken', 'canucks', 'golden_knights',
-]);
-
-const NCAAF_TEAMS = new Set([
-  // SEC
-  'alabama', 'auburn', 'florida_gators', 'georgia', 'lsu', 'ole_miss', 'mississippi_state',
-  'tennessee', 'texas_am', 'kentucky', 'missouri', 'south_carolina', 'arkansas', 'vanderbilt',
-  'texas_longhorns', 'oklahoma',
-  // Big Ten
-  'ohio_state', 'michigan', 'penn_state', 'michigan_state', 'wisconsin', 'iowa', 'minnesota_gophers',
-  'nebraska', 'illinois', 'purdue', 'indiana', 'northwestern', 'rutgers', 'maryland', 'usc', 'ucla',
-  'oregon', 'washington_huskies',
-  // ACC
-  'clemson', 'florida_state', 'miami_hurricanes', 'nc_state', 'north_carolina', 'duke', 'wake_forest',
-  'virginia', 'virginia_tech', 'louisville', 'pittsburgh', 'syracuse', 'boston_college', 'georgia_tech',
-  'notre_dame',
-  // Big 12
-  'baylor', 'tcu', 'texas_tech', 'kansas', 'kansas_state', 'iowa_state', 'oklahoma_state',
-  'west_virginia', 'cincinnati', 'ucf', 'houston_cougars', 'byu', 'colorado_buffs', 'arizona_state',
-  'arizona_wildcats', 'utah_utes',
-  // Others
-  'stanford', 'cal', 'oregon_state', 'washington_state',
-]);
-
-const NCAAB_TEAMS = new Set([
-  // Use NCAAF teams plus basketball-specific
-  ...NCAAF_TEAMS,
-  'gonzaga', 'villanova', 'uconn', 'creighton', 'marquette', 'st_johns', 'seton_hall',
-  'xavier', 'butler', 'providence', 'memphis_tigers', 'san_diego_state', 'dayton', 'saint_marys',
-]);
-
-// Combined set for quick lookup
-const ALL_SPORTS_TEAMS = new Set([
-  ...NFL_TEAMS, ...NBA_TEAMS, ...MLB_TEAMS, ...NHL_TEAMS, ...NCAAF_TEAMS, ...NCAAB_TEAMS,
-]);
+// Combined set for quick lookup (uses imported sets from teams.ts)
+const ALL_SPORTS_TEAMS = ALL_SPORTS_TEAM_KEYS;
 
 /**
  * Detect sports matchups between two sets of entities
@@ -808,7 +564,7 @@ export function calculateTitleSimilarity(title1: string, title2: string): number
 export function matchMarketsCrossPlatform(
   kalshiMarkets: Market[],
   polymarketMarkets: Market[],
-  minSimilarity: number = 0.5
+  minSimilarity: number = 0.35  // was 0.5 - lowered for more matches
 ): CrossPlatformMatch[] {
   const matches: CrossPlatformMatch[] = [];
   const usedPolymarketIds = new Set<string>();

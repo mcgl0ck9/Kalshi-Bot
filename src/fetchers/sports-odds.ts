@@ -19,6 +19,13 @@
 import { logger } from '../utils/index.js';
 import { ODDS_API_KEY } from '../config.js';
 import type { Market } from '../types/index.js';
+import {
+  NFL_TEAMS,
+  NBA_TEAMS,
+  MLB_TEAMS,
+  NHL_TEAMS,
+  type LeagueTeams,
+} from '../data/teams.js';
 
 // =============================================================================
 // TYPES
@@ -477,39 +484,42 @@ export interface SportsEdgeSignal {
   matchType: 'home_win' | 'away_win' | 'spread' | 'total';
 }
 
-// Team name normalization for matching
-const TEAM_ALIASES: Record<string, string[]> = {
-  // NFL
-  chiefs: ['kansas city chiefs', 'kc chiefs', 'chiefs'],
-  eagles: ['philadelphia eagles', 'philly eagles', 'eagles'],
-  cowboys: ['dallas cowboys', 'cowboys'],
-  '49ers': ['san francisco 49ers', '49ers', 'niners', 'sf 49ers'],
-  bills: ['buffalo bills', 'bills'],
-  ravens: ['baltimore ravens', 'ravens'],
-  dolphins: ['miami dolphins', 'dolphins'],
-  lions: ['detroit lions', 'lions'],
-  packers: ['green bay packers', 'packers'],
-  bengals: ['cincinnati bengals', 'bengals'],
-  // NBA
-  lakers: ['los angeles lakers', 'la lakers', 'lakers'],
-  celtics: ['boston celtics', 'celtics'],
-  warriors: ['golden state warriors', 'gs warriors', 'warriors'],
-  nuggets: ['denver nuggets', 'nuggets'],
-  bucks: ['milwaukee bucks', 'bucks'],
-  suns: ['phoenix suns', 'suns'],
-  heat: ['miami heat', 'heat'],
-  '76ers': ['philadelphia 76ers', 'sixers', '76ers', 'philly'],
-  knicks: ['new york knicks', 'ny knicks', 'knicks'],
-  // MLB
-  yankees: ['new york yankees', 'ny yankees', 'yankees'],
-  dodgers: ['los angeles dodgers', 'la dodgers', 'dodgers'],
-  braves: ['atlanta braves', 'braves'],
-  astros: ['houston astros', 'astros'],
-  phillies: ['philadelphia phillies', 'phillies'],
-  rangers: ['texas rangers', 'rangers'],
-  orioles: ['baltimore orioles', 'orioles'],
-  rays: ['tampa bay rays', 'rays'],
-};
+// =============================================================================
+// TEAM NAME NORMALIZATION - Uses unified teams.ts module
+// =============================================================================
+
+/**
+ * Build team aliases map from unified teams module
+ * Combines all pro leagues for sports odds matching
+ */
+function buildSportsOddsAliases(): Record<string, string[]> {
+  const aliases: Record<string, string[]> = {};
+
+  const allTeams: LeagueTeams[] = [NFL_TEAMS, NBA_TEAMS, MLB_TEAMS, NHL_TEAMS];
+
+  for (const teams of allTeams) {
+    for (const [teamKey, info] of Object.entries(teams)) {
+      // Use the last word of canonical name as key (team nickname)
+      const nickname = info.canonical.split(' ').pop()?.toLowerCase() ?? teamKey;
+
+      // Combine aliases with lowercase abbreviations
+      const allAliases = [
+        ...info.aliases,
+        ...info.abbreviations.map(a => a.toLowerCase()),
+      ];
+
+      // Store under both teamKey and nickname
+      aliases[teamKey] = allAliases;
+      if (nickname !== teamKey) {
+        aliases[nickname] = allAliases;
+      }
+    }
+  }
+
+  return aliases;
+}
+
+const TEAM_ALIASES = buildSportsOddsAliases();
 
 /**
  * Normalize team name for matching

@@ -138,7 +138,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     logger.step(1, 'Fetching prediction markets...');
 
     const [kalshiMarkets, polymarketMarkets] = await Promise.all([
-      fetchKalshiMarkets(100),
+      fetchKalshiMarkets(500),  // Increased to capture entertainment/RT markets
       fetchPolymarketMarkets(100),
     ]);
 
@@ -256,22 +256,29 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       try {
         const sportsOdds = await fetchAllSportsOdds();
         let totalGames = 0;
-        for (const [, games] of sportsOdds) {
+        for (const [sport, games] of sportsOdds) {
           totalGames += games.length;
+          logger.info(`    ${sport.toUpperCase()}: ${games.length} games`);
         }
         stats.sportsOddsGames = totalGames;
         logger.success(`  ${totalGames} games with odds data`);
 
         // Compare Kalshi sports markets to sportsbook consensus
-        // Lower threshold (3%) for more sensitive edge detection
-        const sportsEdges = findSportsEdges(kalshiMarkets, sportsOdds, 0.03);
+        // Lower threshold (2%) for more sensitive edge detection
+        const sportsEdges = findSportsEdges(kalshiMarkets, sportsOdds, 0.02);
         stats.sportsEdgesFound = sportsEdges.length;
 
         if (sportsEdges.length > 0) {
           logger.success(`  ${sportsEdges.length} sports edges vs consensus`);
 
-          // Convert to opportunities
-          for (const edge of sportsEdges.slice(0, 5)) {
+          // Log all sports edges found for visibility
+          for (const edge of sportsEdges.slice(0, 10)) {
+            const edgePct = (Math.abs(edge.edge) * 100).toFixed(1);
+            logger.info(`    📊 ${edge.matchedGame.awayTeam} @ ${edge.matchedGame.homeTeam}: ${edge.direction} (${edgePct}% edge)`);
+          }
+
+          // Convert top 10 to opportunities
+          for (const edge of sportsEdges.slice(0, 10)) {
             const opp: EdgeOpportunity = {
               market: edge.kalshiMarket,
               source: 'combined', // Cross-referenced with sportsbooks
@@ -388,6 +395,113 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Whale conviction analysis failed: ${error}`);
+    }
+
+    // 6.5.7: Entertainment Edge Detection (RT scores, box office)
+    logger.info('  Checking entertainment edges...');
+    try {
+      // Fetch RT markets specifically (they may not be in the first 200 general markets)
+      const { fetchKalshiRTMarkets } = await import('./exchanges/index.js');
+      const rtMarkets = await fetchKalshiRTMarkets();
+
+      // Combine with general markets for entertainment detection
+      const allMarketsForEntertainment = [...kalshiMarkets, ...rtMarkets];
+      // Deduplicate by ticker
+      const seenTickers = new Set<string>();
+      const uniqueMarkets = allMarketsForEntertainment.filter(m => {
+        if (seenTickers.has(m.ticker ?? m.id)) return false;
+        seenTickers.add(m.ticker ?? m.id);
+        return true;
+      });
+
+      const { detectEntertainmentEdges } = await import('./edge/entertainment-edge.js');
+      const entertainmentEdges = await detectEntertainmentEdges(uniqueMarkets);
+
+      if (entertainmentEdges.length > 0) {
+        logger.success(`  ${entertainmentEdges.length} entertainment edges found`);
+
+        for (const edge of entertainmentEdges.slice(0, 5)) {
+          const opp: EdgeOpportunity = {
+            market: edge.market,
+            source: 'combined',
+            edge: edge.edge,
+            confidence: edge.confidence,
+            urgency: edge.edge > 0.15 ? 'critical' : edge.edge > 0.08 ? 'standard' : 'fyi',
+            direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {},
+          };
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Entertainment edge detection failed: ${error}`);
+    }
+
+    // 6.5.8: Polling Edge Detection (538, RCP, Silver Bulletin)
+    logger.info('  Checking polling edges...');
+    try {
+      const { detectPollingEdges } = await import('./edge/polling-edge.js');
+      const pollingEdges = await detectPollingEdges(kalshiMarkets);
+
+      if (pollingEdges.length > 0) {
+        logger.success(`  ${pollingEdges.length} polling edges found`);
+
+        for (const edge of pollingEdges.slice(0, 3)) {
+          const opp: EdgeOpportunity = {
+            market: edge.market,
+            source: 'combined',
+            edge: edge.edge,
+            confidence: edge.confidence,
+            urgency: edge.edge > 0.10 ? 'critical' : edge.edge > 0.05 ? 'standard' : 'fyi',
+            direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {},
+          };
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Polling edge detection failed: ${error}`);
+    }
+
+    // 6.5.9: Fed Speech Keyword Analysis (historical transcript word frequency)
+    logger.info('  Checking Fed speech keyword edges...');
+    try {
+      const { fetchFedMentionMarkets, findFedSpeechEdges } = await import('./edge/fed-speech-edge.js');
+      const fedMentionMarkets = await fetchFedMentionMarkets();
+
+      if (fedMentionMarkets.length > 0) {
+        // Extract headlines for context adjustment
+        const headlines = articles.map(a => a.title ?? '').filter(t => t.length > 0);
+        const fedSpeechEdges = await findFedSpeechEdges(fedMentionMarkets, headlines);
+
+        if (fedSpeechEdges.length > 0) {
+          logger.success(`  ${fedSpeechEdges.length} Fed speech keyword edges found`);
+
+          for (const edge of fedSpeechEdges.slice(0, 5)) {
+            const opp: EdgeOpportunity = {
+              market: edge.market,
+              source: 'combined',
+              edge: Math.abs(edge.edge),
+              confidence: edge.confidence,
+              urgency: edge.signalStrength === 'critical' ? 'critical' : edge.signalStrength === 'actionable' ? 'standard' : 'fyi',
+              direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+              signals: {
+                fedSpeech: {
+                  keyword: edge.keyword,
+                  historicalFrequency: edge.impliedProbability,
+                  reasoning: edge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Fed speech keyword detection failed: ${error}`);
     }
 
     // ========== STEP 7: COMBINE SIGNALS ==========

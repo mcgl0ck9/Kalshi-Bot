@@ -25,23 +25,27 @@ export const KALSHI_DEMO = process.env.KALSHI_DEMO === 'true';
 export const NEWS_API_KEY = process.env.NEWS_API_KEY ?? '';
 export const ODDS_API_KEY = process.env.ODDS_API_KEY ?? '';
 
+// Entertainment APIs (for RT fallback and movie metadata)
+export const TMDB_API_KEY = process.env.TMDB_API_KEY ?? '';  // Free: themoviedb.org
+export const OMDB_API_KEY = process.env.OMDB_API_KEY ?? '';  // Free tier: omdbapi.com
+
 // =============================================================================
 // TRADING SETTINGS
 // =============================================================================
 export const BANKROLL = parseFloat(process.env.BANKROLL ?? '10000');
 export const MAX_POSITION_PCT = parseFloat(process.env.MAX_POSITION_PCT ?? '0.25');
 
-// Tiered edge thresholds
+// Tiered edge thresholds (v2 - lowered for more opportunities)
 export const EDGE_THRESHOLDS = {
-  critical: 0.15,      // 15%+ edge = critical alert, high conviction
-  actionable: 0.08,    // 8%+ edge = actionable, worth trading
-  watchlist: 0.04,     // 4%+ edge = watchlist, monitor for confirmation
-  minimum: 0.02,       // 2%+ edge = minimum to surface at all
+  critical: 0.12,      // 12%+ edge = critical alert, high conviction (was 15%)
+  actionable: 0.06,    // 6%+ edge = actionable, worth trading (was 8%)
+  watchlist: 0.03,     // 3%+ edge = watchlist, monitor for confirmation (was 4%)
+  minimum: 0.015,      // 1.5%+ edge = minimum to surface at all (was 2%)
 };
 
 // Legacy threshold (uses actionable tier)
-export const MIN_EDGE_THRESHOLD = parseFloat(process.env.MIN_EDGE_THRESHOLD ?? '0.04');
-export const MIN_CONFIDENCE = parseFloat(process.env.MIN_CONFIDENCE ?? '0.50');
+export const MIN_EDGE_THRESHOLD = parseFloat(process.env.MIN_EDGE_THRESHOLD ?? '0.02');  // was 0.04
+export const MIN_CONFIDENCE = parseFloat(process.env.MIN_CONFIDENCE ?? '0.40');  // was 0.50
 
 // =============================================================================
 // POLYMARKET ON-CHAIN DATA (Goldsky Subgraphs - FREE)
@@ -442,10 +446,10 @@ export const KNOWN_WHALES: Record<string, {
 };
 
 // Minimum position size to be considered a "whale" position (in USDC)
-export const WHALE_POSITION_THRESHOLD = 10_000;
+export const WHALE_POSITION_THRESHOLD = 5_000;  // was 10_000 - lowered for more signals
 
-// Minimum conviction % to trigger a signal (e.g., 70% = whale has 70%+ of their capital in one outcome)
-export const WHALE_CONVICTION_THRESHOLD = 0.70;
+// Minimum conviction % to trigger a signal (e.g., 60% = whale has 60%+ of their capital in one outcome)
+export const WHALE_CONVICTION_THRESHOLD = 0.60;  // was 0.70 - lowered for more signals
 
 // =============================================================================
 // RSS FEEDS (100+ sources)
