@@ -16,6 +16,7 @@ import type {
   NewMarket,
   CalibrationReport,
 } from '../types/index.js';
+import { formatEdgeAlert } from './discord.js';
 
 // =============================================================================
 // CHANNEL CONFIGURATION
@@ -184,8 +185,21 @@ export function routeSignal(signal: {
 
 /**
  * Format and send an edge opportunity
+ * Uses the enhanced formatEdgeAlert for clear position guidance
  */
 export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void> {
+  // Validate market data - skip if price is 0 or undefined (bad data)
+  if (!opportunity.market.price || opportunity.market.price <= 0) {
+    logger.warn(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - invalid price: ${opportunity.market.price}`);
+    return;
+  }
+
+  // Skip if edge is unrealistically high (likely bad data)
+  if (opportunity.edge > 0.50) {
+    logger.warn(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - suspicious edge: ${(opportunity.edge * 100).toFixed(0)}%`);
+    return;
+  }
+
   const channels = routeSignal({
     type: 'edge',
     edge: opportunity.edge,
@@ -193,19 +207,8 @@ export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void>
     urgency: opportunity.urgency,
   });
 
-  const emoji = opportunity.urgency === 'critical' ? '🔴' :
-                opportunity.urgency === 'standard' ? '🟡' : '🟢';
-
-  const content = [
-    `${emoji} **${opportunity.urgency.toUpperCase()} EDGE**`,
-    '',
-    `**${opportunity.market.title?.slice(0, 80)}**`,
-    `Platform: ${opportunity.market.platform} | Price: ${(opportunity.market.price * 100).toFixed(0)}%`,
-    `Edge: ${(opportunity.edge * 100).toFixed(1)}% | Direction: **${opportunity.direction}**`,
-    `Confidence: ${(opportunity.confidence * 100).toFixed(0)}%`,
-    '',
-    opportunity.market.url ? `[View Market](${opportunity.market.url})` : '',
-  ].filter(Boolean).join('\n');
+  // Use the enhanced formatting from discord.ts
+  const content = formatEdgeAlert(opportunity);
 
   await Promise.all(channels.map(ch => sendToChannel(ch, content)));
 }

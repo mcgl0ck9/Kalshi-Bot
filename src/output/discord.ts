@@ -96,6 +96,16 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
   const currentPrice = market.price * 100;
   const fairValue = isYes ? currentPrice + (edge * 100) : currentPrice - (edge * 100);
 
+  // For "vs" or "or" markets, try to clarify what YES means
+  const title = market.title?.toLowerCase() ?? '';
+  let yesExplanation = '';
+  if ((title.includes(' vs ') || title.includes(' or ')) && isYes) {
+    const match = (market.title ?? '').match(/will\s+(.+?)\s+(?:vs|or)\s+/i);
+    if (match) {
+      yesExplanation = `   ℹ️ YES = ${match[1]}`;
+    }
+  }
+
   const lines: string[] = [
     `${emoji} **${urgency.toUpperCase()} EDGE DETECTED**`,
     '',
@@ -107,6 +117,7 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     '```',
     `${actionEmoji} ACTION: ${actionVerb} @ ${currentPrice.toFixed(0)}¢`,
     '```',
+    yesExplanation,
     '',
     // Pricing breakdown
     `📍 **Current Price:** ${currentPrice.toFixed(0)}¢`,
@@ -114,7 +125,7 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     `📈 **Edge:** +${(edge * 100).toFixed(1)}%`,
     `🎯 **Confidence:** ${(confidence * 100).toFixed(0)}%`,
     '',
-  ];
+  ].filter(Boolean);
 
   // ═══════════════════════════════════════════════════════════════════
   // SIGNAL EXPLANATIONS - WHY we think this is mispriced
@@ -219,12 +230,17 @@ export function formatSummaryReport(
   // ═══════════════════════════════════════════════════════════════════
   // ACTIONABLE OPPORTUNITIES - Most important section
   // ═══════════════════════════════════════════════════════════════════
-  if (opportunities.length > 0) {
+  // Filter out bad data (0 price, >50% edge which is suspicious)
+  const validOpportunities = opportunities.filter(opp =>
+    opp.market.price > 0 && opp.edge <= 0.50
+  );
+
+  if (validOpportunities.length > 0) {
     lines.push('═══════════════════════════════════════');
     lines.push('**🎯 ACTIONABLE OPPORTUNITIES**');
     lines.push('');
 
-    for (const opp of opportunities.slice(0, 5)) {
+    for (const opp of validOpportunities.slice(0, 5)) {
       const emoji = getUrgencyEmoji(opp.urgency);
       const actionEmoji = opp.direction === 'BUY YES' ? '🟢' : '🔴';
       const price = (opp.market.price * 100).toFixed(0);
@@ -232,6 +248,16 @@ export function formatSummaryReport(
 
       lines.push(`${emoji} **${opp.market.title?.slice(0, 50)}**`);
       lines.push(`   ${actionEmoji} ${opp.direction} @ ${price}¢ | Edge: ${edgePct}% | Conf: ${(opp.confidence * 100).toFixed(0)}%`);
+
+      // For "vs" or "or" markets, clarify what YES means
+      const title = opp.market.title?.toLowerCase() ?? '';
+      if ((title.includes(' vs ') || title.includes(' or ')) && opp.direction === 'BUY YES') {
+        // Try to extract the first option as what YES means
+        const match = title.match(/will\s+(.+?)\s+(?:vs|or)\s+/i);
+        if (match) {
+          lines.push(`   ℹ️ YES = ${match[1]}`);
+        }
+      }
 
       if (opp.sizing && opp.sizing.positionSize > 0) {
         lines.push(`   💰 Size: ${formatCurrency(opp.sizing.positionSize)}`);
