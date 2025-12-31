@@ -44,3 +44,4 @@ export * from './cross-platform-conviction.js';
 export * from './entertainment-edge.js';
 export * from './polling-edge.js';
 export * from './enhanced-sports-edge.js';
+export * from './city-weather-edge.js';

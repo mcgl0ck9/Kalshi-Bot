@@ -53,6 +53,8 @@ import {
   analyzeMarketsForRecencyBiasSimple,
   recencyBiasToMacroEdgeSignal,
   findCrossPlatformConvictionEdges,
+  analyzeCityWeatherMarkets,
+  cityWeatherEdgeToOpportunity,
 } from './edge/index.js';
 
 // Output
@@ -124,6 +126,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     sportsOddsGames: 0,
     sportsEdgesFound: 0,
     weatherSignals: 0,
+    cityWeatherSignals: 0,
     recencyBiasSignals: 0,
     whaleConvictionSignals: 0,
   };
@@ -353,6 +356,29 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Weather analysis failed: ${error}`);
+    }
+
+    // 6.5.4b: City-Specific Weather (Snow in Chicago, Rain in LA, etc.)
+    logger.info('  Checking city weather markets...');
+    try {
+      const cityWeatherEdges = await analyzeCityWeatherMarkets(kalshiMarkets);
+      stats.cityWeatherSignals = cityWeatherEdges.length;
+
+      if (cityWeatherEdges.length > 0) {
+        logger.success(`  ${cityWeatherEdges.length} city weather edges found`);
+
+        // Convert to opportunities
+        for (const edge of cityWeatherEdges.slice(0, 5)) {
+          const opp = cityWeatherEdgeToOpportunity(edge);
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+
+          // Log the edge for visibility
+          logger.info(`    🌦️ ${edge.city} ${edge.measurementType}: ${(edge.edge * 100).toFixed(1)}% edge (${edge.direction})`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  City weather analysis failed: ${error}`);
     }
 
     // 6.5.5: Recency Bias / Base Rate Neglect
