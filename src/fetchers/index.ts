@@ -49,3 +49,19 @@ export {
   findOptionsEdge,
   formatOptionsImpliedReport,
 } from './options-implied.js';
+
+// Sports odds (The Odds API integration)
+export {
+  fetchSportOdds,
+  fetchAllSportsOdds,
+  analyzeInjuryOverreaction,
+  compareKalshiToConsensus,
+  findSportsEdges,
+  formatSportsOddsReport,
+  formatSportsEdgesReport,
+  type SportOdds,
+  type BookmakerOdds,
+  type LineMovement,
+  type InjuryLineImpact,
+  type SportsEdgeSignal,
+} from './sports-odds.js';

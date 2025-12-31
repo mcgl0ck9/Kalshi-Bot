@@ -84,6 +84,11 @@ export interface EdgeOpportunity {
     crossPlatform?: CrossPlatformMatch;
     sentiment?: SentimentEdge;
     whale?: WhaleSignal;
+    // Sports and macro signals
+    sportsConsensus?: number;
+    matchedGame?: string;
+    fedRegime?: string;
+    injuryOverreaction?: number;
   };
   sizing?: PositionSizing;
 }

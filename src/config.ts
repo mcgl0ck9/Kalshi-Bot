@@ -148,13 +148,50 @@ export const TRACKED_TOPICS: Record<string, TopicConfig> = {
     category: 'entertainment',
   },
 
-  // Sports
+  // Sports - Major Leagues
   nfl: {
-    keywords: ['nfl', 'super bowl', 'touchdown', 'quarterback'],
+    keywords: ['nfl', 'super bowl', 'touchdown', 'quarterback', 'football', 'chiefs', 'eagles', 'cowboys', 'patriots'],
     category: 'sports',
   },
   nba: {
-    keywords: ['nba', 'basketball', 'nba finals', 'playoffs'],
+    keywords: ['nba', 'basketball', 'nba finals', 'playoffs', 'lebron', 'curry', 'lakers', 'celtics', 'warriors'],
+    category: 'sports',
+  },
+  mlb: {
+    keywords: ['mlb', 'baseball', 'world series', 'home run', 'pitcher', 'yankees', 'dodgers', 'mets', 'cubs'],
+    category: 'sports',
+  },
+  nhl: {
+    keywords: ['nhl', 'hockey', 'stanley cup', 'goal', 'puck', 'bruins', 'rangers', 'maple leafs', 'oilers'],
+    category: 'sports',
+  },
+  soccer: {
+    keywords: ['soccer', 'football', 'premier league', 'champions league', 'la liga', 'bundesliga', 'serie a', 'mls', 'world cup', 'messi', 'ronaldo'],
+    category: 'sports',
+  },
+  golf: {
+    keywords: ['golf', 'pga', 'masters', 'us open', 'british open', 'pga championship', 'tiger woods', 'rory', 'scottie scheffler'],
+    category: 'sports',
+  },
+  tennis: {
+    keywords: ['tennis', 'wimbledon', 'us open tennis', 'french open', 'australian open', 'grand slam', 'djokovic', 'alcaraz', 'sinner'],
+    category: 'sports',
+  },
+  mma: {
+    keywords: ['mma', 'ufc', 'knockout', 'submission', 'fight', 'dana white', 'heavyweight', 'lightweight'],
+    category: 'sports',
+  },
+  college_football: {
+    keywords: ['college football', 'cfp', 'cfb', 'ncaa football', 'heisman', 'college playoff', 'sec football', 'big ten football'],
+    category: 'sports',
+  },
+  college_basketball: {
+    keywords: ['college basketball', 'march madness', 'ncaa tournament', 'final four', 'ncaa basketball', 'cbb'],
+    category: 'sports',
+  },
+  // Sports - Injuries (for overreaction detection)
+  sports_injury: {
+    keywords: ['injury', 'injured', 'out for season', 'ruled out', 'questionable', 'doubtful', 'day-to-day', 'concussion', 'torn acl', 'hamstring', 'ankle injury'],
     category: 'sports',
   },
 
@@ -176,21 +213,33 @@ export const TRACKED_TOPICS: Record<string, TopicConfig> = {
     category: 'geopolitics',
   },
 
-  // Macro
+  // Macro - Fed & Monetary Policy
   fed_rate: {
-    keywords: ['fed rate', 'federal reserve', 'fomc', 'powell', 'rate cut', 'rate hike'],
+    keywords: ['fed rate', 'federal reserve', 'fomc', 'powell', 'rate cut', 'rate hike', 'fed decision', 'interest rate decision'],
+    category: 'macro',
+  },
+  fed_speech: {
+    keywords: ['fed speech', 'powell speech', 'fomc minutes', 'fed testimony', 'federal reserve chair', 'fed governor', 'fed president', 'jackson hole', 'fed remarks', 'monetary policy statement'],
+    category: 'macro',
+  },
+  fomc_minutes: {
+    keywords: ['fomc minutes', 'meeting minutes', 'fed minutes', 'policy statement', 'dot plot', 'fed projections', 'economic projections'],
     category: 'macro',
   },
   inflation: {
-    keywords: ['inflation', 'cpi', 'consumer price'],
+    keywords: ['inflation', 'cpi', 'consumer price', 'pce', 'core inflation', 'price index', 'inflation rate', 'disinflation'],
     category: 'macro',
   },
   recession: {
-    keywords: ['recession', 'economic downturn', 'gdp decline'],
+    keywords: ['recession', 'economic downturn', 'gdp decline', 'economic contraction', 'hard landing', 'soft landing'],
     category: 'macro',
   },
   jobs: {
-    keywords: ['jobs report', 'unemployment', 'nonfarm payroll'],
+    keywords: ['jobs report', 'unemployment', 'nonfarm payroll', 'nfp', 'employment report', 'jobless claims', 'labor market', 'payrolls'],
+    category: 'macro',
+  },
+  gdp: {
+    keywords: ['gdp', 'gross domestic product', 'economic growth', 'gdp growth', 'gdpnow', 'economic output'],
     category: 'macro',
   },
 

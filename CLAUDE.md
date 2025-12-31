@@ -16,6 +16,15 @@ Kalshi Edge Detector v2 - A TypeScript system for detecting edges in Kalshi pred
 5. **New Market Scanner** - Early mover advantage on fresh markets
 6. **Calibration Tracking** - Historical accuracy and bias adjustment
 
+### Adversarially Validated Signals (edge/*)
+Signals that pass the "who's on the other side?" test:
+
+7. **Fed Regime Bias** (`fed-regime-bias.ts`) - Cleveland Fed research shows FedWatch has regime-dependent biases. Rising rate environments: overpredicts cuts. Falling rate environments: underpredicts cuts.
+8. **Injury Overreaction** (`injury-overreaction.ts`) - Public overreacts to star player injuries. Detect when sentiment is more negative than expected for injury severity.
+9. **Sports Odds Consensus** (`sports-odds.ts`) - Compare Kalshi sports markets to sportsbook consensus. Sportsbooks have sharper lines from higher handle.
+10. **Weather Overreaction** (`weather-overreaction.ts`) - Apply climatological base rates + forecast skill limits. Wet bias in precipitation forecasts, cone misinterpretation for hurricanes.
+11. **Recency Bias** (`recency-bias.ts`) - Detect markets that moved more than optimal Bayesian update. Fade overreactions toward base rates.
+
 ## Commands
 
 ```bash
@@ -44,11 +53,16 @@ src/
 │   ├── whales.ts      # Whale activity tracking
 │   ├── entertainment.ts # Box office, Rotten Tomatoes
 │   ├── options-implied.ts # Fed Funds, SPX, Treasury yields
+│   ├── sports-odds.ts # The Odds API integration
 │   └── economic/      # Fed, CPI, Jobs, GDP nowcasts
 ├── edge/              # Edge detection modules
 │   ├── macro-edge.ts  # Economic indicator edges
 │   ├── new-market-scanner.ts # Fresh market detection
-│   └── calibration-tracker.ts # Prediction tracking
+│   ├── calibration-tracker.ts # Prediction tracking
+│   ├── fed-regime-bias.ts # FedWatch regime adjustment
+│   ├── injury-overreaction.ts # Sports injury overreaction
+│   ├── weather-overreaction.ts # Weather forecast bias
+│   └── recency-bias.ts # Base rate neglect detection
 ├── analysis/          # Sentiment, cross-platform matching, Kelly sizing
 └── output/            # Discord output
     ├── discord.ts     # Webhooks + bot
@@ -70,13 +84,19 @@ src/
 4. Match markets cross-platform using title similarity + entity extraction
 5. Analyze sentiment by topic
 6. Find sentiment-based edges
+6.5. **Validated macro signals**:
+   - Fed Regime Bias adjustment
+   - Injury overreaction detection
+   - Sports odds vs Kalshi comparison (if ODDS_API_KEY set)
+   - Weather forecast overreaction
+   - Recency bias / base rate neglect
 7. Combine signals into opportunities with Kelly sizing
 8. Send alerts to Discord
 
 ## Config (.env)
 
 Required: `DISCORD_WEBHOOK_URL` or `DISCORD_BOT_TOKEN`
-Optional: `KALSHI_API_KEY_ID`, `NEWS_API_KEY`, `BANKROLL`, `MIN_EDGE_THRESHOLD`
+Optional: `KALSHI_API_KEY_ID`, `NEWS_API_KEY`, `ODDS_API_KEY`, `BANKROLL`, `MIN_EDGE_THRESHOLD`
 
 ### Discord Channels (Optional)
 

@@ -7,19 +7,31 @@
  * 3. Checks whale activity
  * 4. Finds cross-platform divergences
  * 5. Finds sentiment-based edges
- * 6. Combines signals for final opportunities
- * 7. Sends alerts to Discord
+ * 6. Runs validated macro signals (Fed regime, sports, injury)
+ * 7. Combines signals for final opportunities
+ * 8. Sends alerts to Discord
+ *
+ * VALIDATED SIGNALS (passed adversarial testing):
+ * - Fed Regime Bias Adjustment: Corrects FedWatch for rising/falling rate biases
+ * - Injury Overreaction: Detects when public overreacts to injury news
+ * - Sports Odds Comparison: Compares Kalshi to sportsbook consensus
+ *
+ * SKIPPED SIGNALS (failed adversarial testing):
+ * - Simple FedWatch arbitrage (too noisy)
+ * - Sports arbitrage (arb bots faster, fees eat profits)
+ * - Steam move chasing (need ms execution)
  */
 
-import type { EdgeOpportunity, CrossPlatformMatch, Market, TopicSentiment, WhaleSignal, PositionSizing } from './types/index.js';
+import type { EdgeOpportunity, CrossPlatformMatch, Market, TopicSentiment, WhaleSignal, PositionSizing, MacroEdgeSignal } from './types/index.js';
 import { logger, delay } from './utils/index.js';
-import { BANKROLL, CATEGORY_PRIORITIES, MIN_EDGE_THRESHOLD } from './config.js';
+import { BANKROLL, CATEGORY_PRIORITIES, MIN_EDGE_THRESHOLD, ODDS_API_KEY } from './config.js';
 
 // Exchanges
 import { fetchKalshiMarkets, fetchPolymarketMarkets } from './exchanges/index.js';
 
 // Fetchers
-import { fetchAllNews, checkWhaleActivity } from './fetchers/index.js';
+import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges } from './fetchers/index.js';
+import { fetchFedWatch } from './fetchers/economic/fed-watch.js';
 
 // Analysis
 import {
@@ -30,6 +42,19 @@ import {
   calculateAdaptivePosition,
   formatDivergenceReport,
 } from './analysis/index.js';
+
+// Edge detection (validated signals)
+import {
+  applyRegimeBiasAdjustment,
+  findRegimeAdjustedFedEdge,
+  toMacroEdgeSignal,
+  formatRegimeAnalysisReport,
+  analyzeAllInjuryOverreactions,
+  formatInjuryOverreactionReport,
+  analyzeWeatherMarkets,
+  analyzeMarketsForRecencyBiasSimple,
+  recencyBiasToMacroEdgeSignal,
+} from './edge/index.js';
 
 // Output
 import {
@@ -52,10 +77,17 @@ export interface PipelineResult {
     divergencesFound: number;
     opportunitiesFound: number;
     alertsSent: number;
+    fedRegimeSignals: number;
+    injurySignals: number;
+    sportsOddsGames: number;
+    sportsEdgesFound: number;
+    weatherSignals: number;
+    recencyBiasSignals: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
   whaleSignals: WhaleSignal[];
+  macroSignals: MacroEdgeSignal[];
   duration: number;
 }
 
@@ -81,11 +113,18 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     divergencesFound: 0,
     opportunitiesFound: 0,
     alertsSent: 0,
+    fedRegimeSignals: 0,
+    injurySignals: 0,
+    sportsOddsGames: 0,
+    sportsEdgesFound: 0,
+    weatherSignals: 0,
+    recencyBiasSignals: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
   const allDivergences: CrossPlatformMatch[] = [];
   const whaleSignals: WhaleSignal[] = [];
+  const macroSignals: MacroEdgeSignal[] = [];
 
   try {
     // ========== STEP 1: FETCH PREDICTION MARKETS ==========
@@ -148,6 +187,162 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 
     logger.success(`${sentimentEdges.length} sentiment edges found`);
 
+    // ========== STEP 6.5: VALIDATED MACRO SIGNALS ==========
+    logger.step(6.5, 'Running validated macro signals...');
+
+    // 6.5.1: Fed Regime Bias Adjustment
+    logger.info('  Checking Fed regime bias...');
+    try {
+      const fedWatchData = await fetchFedWatch();
+      if (fedWatchData) {
+        const regimeAdjusted = applyRegimeBiasAdjustment(fedWatchData);
+        if (regimeAdjusted) {
+          logger.info(`  Fed regime: ${regimeAdjusted.regime.toUpperCase()} (${(regimeAdjusted.regimeConfidence * 100).toFixed(0)}% conf)`);
+
+          // Find edges in Fed markets using regime-adjusted probabilities
+          for (const market of kalshiMarkets) {
+            const fedEdge = findRegimeAdjustedFedEdge(market, fedWatchData);
+            if (fedEdge) {
+              const macroSignal = toMacroEdgeSignal(fedEdge);
+              macroSignals.push(macroSignal);
+              stats.fedRegimeSignals++;
+            }
+          }
+          logger.success(`  ${stats.fedRegimeSignals} Fed regime signals`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Fed regime check failed: ${error}`);
+    }
+
+    // 6.5.2: Injury Overreaction Detection
+    logger.info('  Checking injury overreactions...');
+    try {
+      const injurySignals = analyzeAllInjuryOverreactions(topicSentiment, kalshiMarkets);
+      stats.injurySignals = injurySignals.length;
+      if (injurySignals.length > 0) {
+        logger.success(`  ${injurySignals.length} injury overreaction signals`);
+        // Convert to opportunities
+        for (const sig of injurySignals) {
+          if (sig.relatedMarket && sig.direction !== 'no_signal') {
+            const opp: EdgeOpportunity = {
+              market: sig.relatedMarket,
+              source: 'sentiment', // Use sentiment source for injury signals
+              edge: sig.overreactionScore,
+              confidence: sig.confidence,
+              urgency: sig.signalStrength === 'strong' ? 'critical' : sig.signalStrength === 'moderate' ? 'standard' : 'fyi',
+              direction: sig.direction === 'fade' ? 'BUY NO' : 'BUY YES',
+              signals: {},
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Injury detection failed: ${error}`);
+    }
+
+    // 6.5.3: Sports Odds Comparison (if API key configured)
+    if (ODDS_API_KEY) {
+      logger.info('  Fetching sports odds...');
+      try {
+        const sportsOdds = await fetchAllSportsOdds();
+        let totalGames = 0;
+        for (const [, games] of sportsOdds) {
+          totalGames += games.length;
+        }
+        stats.sportsOddsGames = totalGames;
+        logger.success(`  ${totalGames} games with odds data`);
+
+        // Compare Kalshi sports markets to sportsbook consensus
+        const sportsEdges = findSportsEdges(kalshiMarkets, sportsOdds);
+        stats.sportsEdgesFound = sportsEdges.length;
+
+        if (sportsEdges.length > 0) {
+          logger.success(`  ${sportsEdges.length} sports edges vs consensus`);
+
+          // Convert to opportunities
+          for (const edge of sportsEdges.slice(0, 5)) {
+            const opp: EdgeOpportunity = {
+              market: edge.kalshiMarket,
+              source: 'combined', // Cross-referenced with sportsbooks
+              edge: Math.abs(edge.edge),
+              confidence: edge.confidence,
+              urgency: Math.abs(edge.edge) > 0.10 ? 'critical' : Math.abs(edge.edge) > 0.06 ? 'standard' : 'fyi',
+              direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+              signals: {
+                sportsConsensus: edge.consensusProb,
+                matchedGame: `${edge.matchedGame.awayTeam} @ ${edge.matchedGame.homeTeam}`,
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      } catch (error) {
+        logger.warn(`  Sports odds fetch failed: ${error}`);
+      }
+    }
+
+    // 6.5.4: Weather Forecast Overreaction
+    logger.info('  Checking weather market overreactions...');
+    try {
+      const weatherEdges = analyzeWeatherMarkets(kalshiMarkets);
+      stats.weatherSignals = weatherEdges.length;
+
+      if (weatherEdges.length > 0) {
+        logger.success(`  ${weatherEdges.length} weather overreaction signals`);
+
+        // Convert to opportunities
+        for (const edge of weatherEdges.slice(0, 3)) {
+          const opp: EdgeOpportunity = {
+            market: edge.market,
+            source: 'combined',
+            edge: Math.abs(edge.edge),
+            confidence: edge.confidence,
+            urgency: Math.abs(edge.edge) > 0.10 ? 'critical' : Math.abs(edge.edge) > 0.06 ? 'standard' : 'fyi',
+            direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {},
+          };
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Weather analysis failed: ${error}`);
+    }
+
+    // 6.5.5: Recency Bias / Base Rate Neglect
+    logger.info('  Checking for recency bias...');
+    try {
+      const recencySignals = analyzeMarketsForRecencyBiasSimple(kalshiMarkets);
+      stats.recencyBiasSignals = recencySignals.length;
+
+      if (recencySignals.length > 0) {
+        logger.success(`  ${recencySignals.length} recency bias signals`);
+
+        // Convert to macro signals and opportunities
+        for (const sig of recencySignals.slice(0, 3)) {
+          macroSignals.push(recencyBiasToMacroEdgeSignal(sig));
+
+          const opp: EdgeOpportunity = {
+            market: sig.market,
+            source: 'combined',
+            edge: Math.abs(sig.edge),
+            confidence: sig.confidence,
+            urgency: sig.overreactionFactor > 2.5 ? 'critical' : sig.overreactionFactor > 2.0 ? 'standard' : 'fyi',
+            direction: sig.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {},
+          };
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Recency bias analysis failed: ${error}`);
+    }
+
     // ========== STEP 7: COMBINE SIGNALS ==========
     logger.step(7, 'Combining signals for final opportunities...');
 
@@ -185,6 +380,26 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 
       opportunity.sizing = calculateAdaptivePosition(bankroll, opportunity);
       opportunities.push(opportunity);
+    }
+
+    // Add macro signal opportunities (Fed regime, etc.)
+    for (const macroSig of macroSignals.slice(0, 5)) {
+      // Find the market from kalshiMarkets
+      const market = kalshiMarkets.find(m => m.id === macroSig.marketId);
+      if (market) {
+        const opportunity: EdgeOpportunity = {
+          market,
+          source: 'combined', // Macro signals are combined/processed signals
+          edge: Math.abs(macroSig.edge),
+          confidence: macroSig.confidence,
+          urgency: macroSig.signalStrength === 'strong' ? 'critical' : macroSig.signalStrength === 'moderate' ? 'standard' : 'fyi',
+          direction: macroSig.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+          signals: {},
+        };
+
+        opportunity.sizing = calculateAdaptivePosition(bankroll, opportunity);
+        opportunities.push(opportunity);
+      }
     }
 
     // Sort by edge magnitude and urgency
@@ -237,6 +452,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       opportunities,
       divergences: allDivergences,
       whaleSignals,
+      macroSignals,
       duration,
     };
   } catch (error) {
@@ -248,6 +464,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       opportunities,
       divergences: allDivergences,
       whaleSignals,
+      macroSignals,
       duration: (Date.now() - startTime) / 1000,
     };
   }
