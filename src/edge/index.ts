@@ -7,6 +7,7 @@
  * - Injury overreaction detection (validated signal)
  * - Weather forecast overreaction (validated signal)
  * - Recency bias / base rate neglect (validated signal)
+ * - Cross-platform whale conviction (NEW - uses Polymarket on-chain data)
  * - New market scanner
  * - Calibration tracking
  *
@@ -15,6 +16,7 @@
  * 2. Injury Overreaction - Detects when public overreacts to injury news
  * 3. Weather Overreaction - Applies climatological base rates + forecast skill limits
  * 4. Recency Bias - Fades markets that moved more than optimal Bayesian update
+ * 5. Cross-Platform Conviction - Polymarket whale positions vs Kalshi prices
  *
  * SKIPPED SIGNALS (failed adversarial testing):
  * - Simple FedWatch arbitrage (too noisy, other traders see it too)
@@ -29,3 +31,4 @@ export * from './fed-regime-bias.js';
 export * from './injury-overreaction.js';
 export * from './weather-overreaction.js';
 export * from './recency-bias.js';
+export * from './cross-platform-conviction.js';

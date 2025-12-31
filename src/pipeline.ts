@@ -48,12 +48,11 @@ import {
   applyRegimeBiasAdjustment,
   findRegimeAdjustedFedEdge,
   toMacroEdgeSignal,
-  formatRegimeAnalysisReport,
   analyzeAllInjuryOverreactions,
-  formatInjuryOverreactionReport,
   analyzeWeatherMarkets,
   analyzeMarketsForRecencyBiasSimple,
   recencyBiasToMacroEdgeSignal,
+  findCrossPlatformConvictionEdges,
 } from './edge/index.js';
 
 // Output
@@ -89,6 +88,7 @@ export interface PipelineResult {
     sportsEdgesFound: number;
     weatherSignals: number;
     recencyBiasSignals: number;
+  whaleConvictionSignals: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -125,6 +125,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     sportsEdgesFound: 0,
     weatherSignals: 0,
     recencyBiasSignals: 0,
+    whaleConvictionSignals: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -347,6 +348,45 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Recency bias analysis failed: ${error}`);
+    }
+
+    // 6.5.6: Cross-Platform Whale Conviction (Polymarket on-chain data)
+    logger.info('  Checking Polymarket whale conviction...');
+    try {
+      const convictionEdges = await findCrossPlatformConvictionEdges(
+        kalshiMarkets,
+        polymarketMarkets,
+        0.6 // Minimum conviction strength
+      );
+      stats.whaleConvictionSignals = convictionEdges.length;
+
+      if (convictionEdges.length > 0) {
+        logger.success(`  ${convictionEdges.length} whale conviction signals`);
+
+        // Convert to opportunities
+        for (const edge of convictionEdges.slice(0, 5)) {
+          const opp: EdgeOpportunity = {
+            market: edge.kalshiMarket,
+            source: 'whale', // New source type for whale signals
+            edge: edge.edge,
+            confidence: edge.confidence,
+            urgency: edge.urgency,
+            direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {
+              whaleConviction: {
+                polymarketPrice: edge.polymarketPrice,
+                whaleImpliedPrice: edge.whaleImpliedPrice,
+                convictionStrength: edge.convictionStrength,
+                topWhaleCount: edge.topWhaleCount,
+              },
+            },
+          };
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Whale conviction analysis failed: ${error}`);
     }
 
     // ========== STEP 7: COMBINE SIGNALS ==========

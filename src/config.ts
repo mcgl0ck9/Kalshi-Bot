@@ -30,8 +30,35 @@ export const ODDS_API_KEY = process.env.ODDS_API_KEY ?? '';
 // =============================================================================
 export const BANKROLL = parseFloat(process.env.BANKROLL ?? '10000');
 export const MAX_POSITION_PCT = parseFloat(process.env.MAX_POSITION_PCT ?? '0.25');
-export const MIN_EDGE_THRESHOLD = parseFloat(process.env.MIN_EDGE_THRESHOLD ?? '0.08');
-export const MIN_CONFIDENCE = parseFloat(process.env.MIN_CONFIDENCE ?? '0.60');
+
+// Tiered edge thresholds
+export const EDGE_THRESHOLDS = {
+  critical: 0.15,      // 15%+ edge = critical alert, high conviction
+  actionable: 0.08,    // 8%+ edge = actionable, worth trading
+  watchlist: 0.04,     // 4%+ edge = watchlist, monitor for confirmation
+  minimum: 0.02,       // 2%+ edge = minimum to surface at all
+};
+
+// Legacy threshold (uses actionable tier)
+export const MIN_EDGE_THRESHOLD = parseFloat(process.env.MIN_EDGE_THRESHOLD ?? '0.04');
+export const MIN_CONFIDENCE = parseFloat(process.env.MIN_CONFIDENCE ?? '0.50');
+
+// =============================================================================
+// POLYMARKET ON-CHAIN DATA (Goldsky Subgraphs - FREE)
+// =============================================================================
+export const POLYMARKET_SUBGRAPHS = {
+  positions: 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/positions-subgraph/0.0.7/gn',
+  orderbook: 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/0.0.1/gn',
+  activity: 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/activity-subgraph/0.0.4/gn',
+  openInterest: 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/oi-subgraph/0.0.6/gn',
+  pnl: 'https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/pnl-subgraph/0.0.14/gn',
+};
+
+// Polymarket Data API
+export const POLYMARKET_API = {
+  base: 'https://data-api.polymarket.com',
+  gamma: 'https://gamma-api.polymarket.com',
+};
 
 // =============================================================================
 // SCHEDULE
@@ -257,21 +284,33 @@ export const TRACKED_TOPICS: Record<string, TopicConfig> = {
 };
 
 // =============================================================================
-// KNOWN WHALES
+// KNOWN WHALES (with wallet addresses for on-chain tracking)
 // =============================================================================
 export const KNOWN_WHALES: Record<string, {
-  twitter: string;
+  twitter?: string;
+  wallet?: string;  // Polymarket wallet address for on-chain tracking
   platform: 'polymarket' | 'kalshi';
   profit: number;
   specialty: string[];
   description: string;
+  trackOnChain: boolean;
 }> = {
+  // Top Polymarket traders from leaderboard
+  Theo: {
+    wallet: '0x1234567890abcdef', // Placeholder - need real address
+    platform: 'polymarket',
+    profit: 5_000_000,
+    specialty: ['politics', 'elections'],
+    description: 'Top Polymarket whale, $5M+ profit',
+    trackOnChain: true,
+  },
   Domahhhh: {
     twitter: 'Domahhhh',
     platform: 'polymarket',
     profit: 1_200_000,
     specialty: ['politics', 'general'],
     description: 'Top Polymarket trader, $1.2M profit',
+    trackOnChain: false,
   },
   cobybets1: {
     twitter: 'cobybets1',
@@ -279,6 +318,7 @@ export const KNOWN_WHALES: Record<string, {
     profit: 640_000,
     specialty: ['sports', 'politics'],
     description: 'Sports and politics specialist',
+    trackOnChain: false,
   },
   GaetenD: {
     twitter: 'GaetenD',
@@ -286,6 +326,7 @@ export const KNOWN_WHALES: Record<string, {
     profit: 500_000,
     specialty: ['entertainment', 'culture'],
     description: 'Entertainment markets expert',
+    trackOnChain: false,
   },
   Fredi9999: {
     twitter: 'Fredi9999',
@@ -293,6 +334,7 @@ export const KNOWN_WHALES: Record<string, {
     profit: 400_000,
     specialty: ['politics', 'crypto'],
     description: 'Politics and crypto trader',
+    trackOnChain: false,
   },
   PredictItSharps: {
     twitter: 'StarSpangledGmbr',
@@ -300,8 +342,15 @@ export const KNOWN_WHALES: Record<string, {
     profit: 300_000,
     specialty: ['politics'],
     description: 'Politics specialist, former PredictIt whale',
+    trackOnChain: false,
   },
 };
+
+// Minimum position size to be considered a "whale" position (in USDC)
+export const WHALE_POSITION_THRESHOLD = 10_000;
+
+// Minimum conviction % to trigger a signal (e.g., 70% = whale has 70%+ of their capital in one outcome)
+export const WHALE_CONVICTION_THRESHOLD = 0.70;
 
 // =============================================================================
 // RSS FEEDS (100+ sources)

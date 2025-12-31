@@ -65,3 +65,18 @@ export {
   type InjuryLineImpact,
   type SportsEdgeSignal,
 } from './sports-odds.js';
+
+// Polymarket on-chain data (Goldsky subgraphs)
+export {
+  fetchLargePositions,
+  fetchMarketPositions,
+  fetchOrderbookDepth,
+  fetchLeaderboard,
+  analyzeMarketConviction,
+  findWhaleConvictionSignals,
+  formatWhaleConvictionReport,
+  type WhalePosition,
+  type MarketConviction,
+  type OrderbookDepth,
+  type PolymarketSignal,
+} from './polymarket-onchain.js';

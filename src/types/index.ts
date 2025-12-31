@@ -89,6 +89,13 @@ export interface EdgeOpportunity {
     matchedGame?: string;
     fedRegime?: string;
     injuryOverreaction?: number;
+    // Polymarket whale conviction (on-chain data)
+    whaleConviction?: {
+      polymarketPrice: number;
+      whaleImpliedPrice: number;
+      convictionStrength: number;
+      topWhaleCount: number;
+    };
   };
   sizing?: PositionSizing;
 }
@@ -125,7 +132,8 @@ export interface TopicSentiment {
 
 export interface Whale {
   name: string;
-  twitter: string;
+  twitter?: string;
+  wallet?: string;  // Polymarket wallet address for on-chain tracking
   platform: 'polymarket' | 'kalshi';
   profit: number;
   specialty: string[];
