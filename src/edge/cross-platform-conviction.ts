@@ -98,30 +98,22 @@ function findMatchingKalshiMarket(
  * Find cross-platform conviction edges
  *
  * This is the main function that:
- * 1. Gets whale conviction signals from Polymarket
- * 2. Matches them to Kalshi markets
+ * 1. Gets whale conviction signals from Polymarket (via Gamma API + PnL subgraph)
+ * 2. Matches them to Kalshi markets by title similarity
  * 3. Calculates edge based on whale implied price vs Kalshi price
  */
 export async function findCrossPlatformConvictionEdges(
   kalshiMarkets: Market[],
-  polymarketMarkets: Market[],
+  _polymarketMarkets: Market[], // Kept for API compatibility, but we now use Gamma API internally
   minConviction: number = 0.6
 ): Promise<CrossPlatformConvictionEdge[]> {
   const edges: CrossPlatformConvictionEdge[] = [];
 
-  // Convert Polymarket markets to format for conviction analysis
-  const polymarketsForAnalysis = polymarketMarkets
-    .filter(m => m.id && m.title && m.price)
-    .map(m => ({
-      id: m.id,
-      title: m.title ?? '',
-      price: m.price,
-    }));
-
-  // Get whale conviction signals
+  // Get whale conviction signals from Polymarket
+  // This now fetches active markets from Gamma API and analyzes positions from PnL subgraph
   const convictionSignals = await findWhaleConvictionSignals(
-    polymarketsForAnalysis,
-    minConviction
+    minConviction,
+    10000 // minLiquidity
   );
 
   logger.info(`Analyzing ${convictionSignals.length} whale conviction signals for cross-platform edges`);

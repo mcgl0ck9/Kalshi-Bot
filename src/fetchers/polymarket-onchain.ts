@@ -2,16 +2,16 @@
  * Polymarket On-Chain Data Fetcher
  *
  * Fetches whale positions, order book depth, and conviction data
- * from Polymarket's Goldsky subgraphs (FREE, real-time data).
+ * from Polymarket's Goldsky subgraphs and APIs.
+ *
+ * VALIDATED WORKING DATA SOURCES (as of 2024-12):
+ * 1. PnL Subgraph - userPositions with amount, avgPrice, realizedPnl, tokenId
+ * 2. Orderbook Subgraph - orderFilledEvents for trade flow
+ * 3. Gamma API - market metadata, conditionId, clobTokenIds, prices
+ * 4. CLOB API - order book depth (bids/asks)
  *
  * EDGE SOURCE: Polymarket has transparent on-chain data that Kalshi lacks.
- * We can see:
- * - Which whales are positioned in which direction
- * - How concentrated their positions are (conviction %)
- * - Large order flow and depth imbalances
- * - Open interest trends
- *
- * Then apply this intelligence to find mispricings on Kalshi.
+ * We can see which wallets hold large positions and in which direction.
  */
 
 import { logger } from '../utils/index.js';
@@ -27,7 +27,7 @@ export interface WhalePosition {
   marketTitle: string;
   outcome: 'YES' | 'NO';
   size: number;           // Position size in USDC
-  avgPrice: number;       // Average entry price
+  avgPrice: number;       // Average entry price (0-1)
   currentPrice: number;   // Current market price
   unrealizedPnl: number;
   conviction: number;     // % of whale's total capital in this position
@@ -74,86 +74,95 @@ export interface PolymarketSignal {
   reasoning: string;
 }
 
+export interface GammaMarket {
+  id: string;
+  question: string;
+  conditionId: string;
+  clobTokenIds: string;  // JSON array of [yesTokenId, noTokenId]
+  liquidity: string;
+  outcomePrices: string; // JSON array of [yesPrice, noPrice]
+  volume: string;
+  active: boolean;
+  closed: boolean;
+}
+
+export interface RecentTrade {
+  timestamp: number;
+  maker: string;
+  taker: string;
+  makerAmount: number;
+  takerAmount: number;
+  tokenId: string;
+}
+
 // =============================================================================
-// GRAPHQL QUERIES
+// GRAPHQL QUERIES (VALIDATED WORKING)
 // =============================================================================
 
-const POSITIONS_QUERY = `
-  query GetLargePositions($minSize: BigDecimal!, $first: Int!) {
-    positions(
+/**
+ * PnL Subgraph - Get large positions
+ * Fields: user, tokenId, amount, avgPrice, realizedPnl, totalBought
+ */
+const USER_POSITIONS_QUERY = `
+  query GetLargePositions($minAmount: BigInt!, $first: Int!) {
+    userPositions(
       first: $first
-      orderBy: currentValue
+      orderBy: amount
       orderDirection: desc
-      where: { currentValue_gte: $minSize }
+      where: { amount_gt: $minAmount }
     ) {
       id
-      user {
-        id
-      }
-      market {
-        id
-        question
-      }
-      outcome
-      shares
+      user
+      tokenId
+      amount
       avgPrice
-      currentValue
       realizedPnl
-      createdAt
-      updatedAt
+      totalBought
     }
   }
 `;
 
-const MARKET_POSITIONS_QUERY = `
-  query GetMarketPositions($marketId: String!, $first: Int!) {
-    positions(
+/**
+ * PnL Subgraph - Get positions for a specific token
+ */
+const TOKEN_POSITIONS_QUERY = `
+  query GetTokenPositions($tokenId: String!, $first: Int!) {
+    userPositions(
       first: $first
-      orderBy: currentValue
+      orderBy: amount
       orderDirection: desc
-      where: { market: $marketId }
+      where: { tokenId: $tokenId }
     ) {
       id
-      user {
-        id
-      }
-      outcome
-      shares
+      user
+      tokenId
+      amount
       avgPrice
-      currentValue
       realizedPnl
     }
   }
 `;
 
-const ORDERBOOK_QUERY = `
-  query GetOrderbook($marketId: String!) {
-    orderbooks(where: { market: $marketId }) {
+/**
+ * Orderbook Subgraph - Recent large trades
+ * Fields: timestamp, maker, taker, makerAmountFilled, takerAmountFilled
+ */
+const RECENT_TRADES_QUERY = `
+  query GetRecentTrades($minAmount: BigInt!, $first: Int!) {
+    orderFilledEvents(
+      first: $first
+      orderBy: timestamp
+      orderDirection: desc
+      where: { makerAmountFilled_gt: $minAmount }
+    ) {
       id
-      market {
-        id
-      }
-      currentSpread
-      currentSpreadPercentage
-      totalBidDepth
-      totalAskDepth
-      lastTradePrice
       timestamp
-    }
-  }
-`;
-
-const OPEN_INTEREST_QUERY = `
-  query GetOpenInterest($marketId: String!) {
-    openInterests(where: { market: $marketId }) {
-      id
-      market {
-        id
-      }
-      totalOpenInterest
-      yesOpenInterest
-      noOpenInterest
-      timestamp
+      maker
+      taker
+      makerAssetId
+      takerAssetId
+      makerAmountFilled
+      takerAmountFilled
     }
   }
 `;
@@ -185,7 +194,7 @@ async function querySubgraph<T>(
     const result = await response.json() as { data?: T; errors?: Array<{ message: string }> };
 
     if (result.errors) {
-      logger.error(`Subgraph errors: ${JSON.stringify(result.errors)}`);
+      logger.error(`Subgraph errors: ${result.errors[0]?.message}`);
       return null;
     }
 
@@ -197,267 +206,337 @@ async function querySubgraph<T>(
 }
 
 /**
- * Fetch large positions across all markets
+ * Fetch active markets from Gamma API
+ */
+export async function fetchActiveMarkets(limit: number = 100): Promise<GammaMarket[]> {
+  try {
+    const response = await fetch(
+      `${POLYMARKET_API.gamma}/markets?limit=${limit}&active=true&closed=false`
+    );
+
+    if (!response.ok) {
+      logger.error(`Gamma API error: ${response.status}`);
+      return [];
+    }
+
+    const markets = await response.json() as GammaMarket[];
+    logger.info(`Fetched ${markets.length} active markets from Gamma API`);
+    return markets;
+  } catch (error) {
+    logger.error(`Gamma API fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
+ * Fetch large positions across all markets from PnL subgraph
+ * This is the PRIMARY source for whale data
  */
 export async function fetchLargePositions(
   minSize: number = WHALE_POSITION_THRESHOLD,
   limit: number = 100
 ): Promise<WhalePosition[]> {
+  // Convert to subgraph units (USDC has 6 decimals in contracts)
+  const minAmount = (minSize * 1_000_000).toString();
+
   const data = await querySubgraph<{
-    positions: Array<{
+    userPositions: Array<{
       id: string;
-      user: { id: string };
-      market: { id: string; question: string };
-      outcome: string;
-      shares: string;
+      user: string;
+      tokenId: string;
+      amount: string;
       avgPrice: string;
-      currentValue: string;
       realizedPnl: string;
-      updatedAt: string;
+      totalBought: string;
     }>;
   }>(
-    POLYMARKET_SUBGRAPHS.positions,
-    POSITIONS_QUERY,
-    { minSize: minSize.toString(), first: limit }
+    POLYMARKET_SUBGRAPHS.pnl,
+    USER_POSITIONS_QUERY,
+    { minAmount, first: limit }
   );
 
-  if (!data?.positions) {
-    logger.warn('No positions data returned from subgraph');
+  if (!data?.userPositions) {
+    logger.warn('No positions data returned from PnL subgraph');
     return [];
   }
 
-  return data.positions.map(p => ({
-    wallet: p.user.id,
-    marketId: p.market.id,
-    marketTitle: p.market.question,
-    outcome: p.outcome.toUpperCase() as 'YES' | 'NO',
-    size: parseFloat(p.currentValue),
-    avgPrice: parseFloat(p.avgPrice),
-    currentPrice: 0, // Will be filled from market data
-    unrealizedPnl: 0, // Calculate separately
-    conviction: 0, // Calculate separately based on total portfolio
-    timestamp: p.updatedAt,
-  }));
+  // We need market context to determine YES/NO - will be enriched later
+  return data.userPositions.map(p => ({
+    wallet: p.user,
+    marketId: '', // Will be populated when cross-referenced with Gamma
+    marketTitle: '',
+    outcome: 'YES' as const, // Will be determined by tokenId matching
+    size: parseInt(p.amount) / 1_000_000,
+    avgPrice: parseInt(p.avgPrice) / 1_000_000,
+    currentPrice: 0,
+    unrealizedPnl: 0,
+    conviction: 0,
+    timestamp: '',
+    _tokenId: p.tokenId, // Keep for matching
+  })) as (WhalePosition & { _tokenId: string })[];
 }
 
 /**
- * Fetch positions for a specific market
+ * Fetch positions for a specific market token
  */
 export async function fetchMarketPositions(
-  marketId: string,
+  tokenId: string,
   limit: number = 50
 ): Promise<WhalePosition[]> {
   const data = await querySubgraph<{
-    positions: Array<{
+    userPositions: Array<{
       id: string;
-      user: { id: string };
-      outcome: string;
-      shares: string;
+      user: string;
+      tokenId: string;
+      amount: string;
       avgPrice: string;
-      currentValue: string;
       realizedPnl: string;
     }>;
   }>(
-    POLYMARKET_SUBGRAPHS.positions,
-    MARKET_POSITIONS_QUERY,
-    { marketId, first: limit }
+    POLYMARKET_SUBGRAPHS.pnl,
+    TOKEN_POSITIONS_QUERY,
+    { tokenId, first: limit }
   );
 
-  if (!data?.positions) return [];
+  if (!data?.userPositions) return [];
 
-  return data.positions.map(p => ({
-    wallet: p.user.id,
-    marketId,
+  return data.userPositions.map(p => ({
+    wallet: p.user,
+    marketId: '',
     marketTitle: '',
-    outcome: p.outcome.toUpperCase() as 'YES' | 'NO',
-    size: parseFloat(p.currentValue),
-    avgPrice: parseFloat(p.avgPrice),
+    outcome: 'YES' as const, // Caller knows which token this is
+    size: parseInt(p.amount) / 1_000_000,
+    avgPrice: parseInt(p.avgPrice) / 1_000_000,
     currentPrice: 0,
-    unrealizedPnl: parseFloat(p.realizedPnl),
+    unrealizedPnl: parseInt(p.realizedPnl) / 1_000_000,
     conviction: 0,
     timestamp: '',
   }));
 }
 
 /**
- * Fetch orderbook depth for a market
+ * Fetch order book depth from CLOB API
  */
-export async function fetchOrderbookDepth(marketId: string): Promise<OrderbookDepth | null> {
-  const data = await querySubgraph<{
-    orderbooks: Array<{
-      id: string;
-      currentSpread: string;
-      currentSpreadPercentage: string;
-      totalBidDepth: string;
-      totalAskDepth: string;
-      lastTradePrice: string;
-    }>;
-  }>(
-    POLYMARKET_SUBGRAPHS.orderbook,
-    ORDERBOOK_QUERY,
-    { marketId }
-  );
+export async function fetchOrderbookDepth(tokenId: string): Promise<OrderbookDepth | null> {
+  try {
+    const response = await fetch(`https://clob.polymarket.com/book?token_id=${tokenId}`);
 
-  if (!data?.orderbooks?.[0]) return null;
+    if (!response.ok) {
+      logger.error(`CLOB API error: ${response.status}`);
+      return null;
+    }
 
-  const ob = data.orderbooks[0];
-  const bidDepth = parseFloat(ob.totalBidDepth);
-  const askDepth = parseFloat(ob.totalAskDepth);
-  const spread = parseFloat(ob.currentSpread);
-  const lastPrice = parseFloat(ob.lastTradePrice);
+    const book = await response.json() as {
+      bids: Array<{ price: string; size: string }>;
+      asks: Array<{ price: string; size: string }>;
+    };
 
-  return {
-    marketId,
-    bestBid: lastPrice - spread / 2,
-    bestAsk: lastPrice + spread / 2,
-    spread,
-    spreadPercent: parseFloat(ob.currentSpreadPercentage),
-    bidDepth,
-    askDepth,
-    depthImbalance: bidDepth + askDepth > 0
-      ? (bidDepth - askDepth) / (bidDepth + askDepth)
-      : 0,
-    largestBid: 0, // Would need separate query
-    largestAsk: 0,
-  };
+    const bids = book.bids || [];
+    const asks = book.asks || [];
+
+    const bidDepth = bids.reduce((sum, b) => sum + parseFloat(b.size), 0);
+    const askDepth = asks.reduce((sum, a) => sum + parseFloat(a.size), 0);
+
+    const bestBid = bids.length > 0 ? parseFloat(bids[0].price) : 0;
+    const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) : 1;
+    const spread = bestAsk - bestBid;
+
+    return {
+      marketId: tokenId,
+      bestBid,
+      bestAsk,
+      spread,
+      spreadPercent: spread / ((bestBid + bestAsk) / 2) * 100,
+      bidDepth,
+      askDepth,
+      depthImbalance: bidDepth + askDepth > 0
+        ? (bidDepth - askDepth) / (bidDepth + askDepth)
+        : 0,
+      largestBid: bids.length > 0 ? Math.max(...bids.map(b => parseFloat(b.size))) : 0,
+      largestAsk: asks.length > 0 ? Math.max(...asks.map(a => parseFloat(a.size))) : 0,
+    };
+  } catch (error) {
+    logger.error(`CLOB API error: ${error}`);
+    return null;
+  }
 }
 
 /**
- * Fetch top traders from Polymarket leaderboard
+ * Fetch recent large trades from Orderbook subgraph
  */
-export async function fetchLeaderboard(
-  period: '1d' | '7d' | '30d' | 'all' = '30d',
-  limit: number = 100
-): Promise<Array<{
-  wallet: string;
-  profit: number;
-  volume: number;
-  winRate: number;
-  rank: number;
-}>> {
-  try {
-    // Use Polymarket's data API for leaderboard
-    const response = await fetch(
-      `${POLYMARKET_API.base}/leaderboard?window=${period}&limit=${limit}`
-    );
+export async function fetchRecentTrades(
+  minSize: number = 100,
+  limit: number = 50
+): Promise<RecentTrade[]> {
+  const minAmount = (minSize * 1_000_000).toString();
 
-    if (!response.ok) {
-      logger.error(`Leaderboard fetch failed: ${response.status}`);
-      return [];
-    }
-
-    const data = await response.json() as Array<{
-      user: string;
-      profit: number;
-      volume: number;
-      numTrades: number;
-      wins: number;
+  const data = await querySubgraph<{
+    orderFilledEvents: Array<{
+      timestamp: string;
+      maker: string;
+      taker: string;
+      makerAssetId: string;
+      takerAssetId: string;
+      makerAmountFilled: string;
+      takerAmountFilled: string;
     }>;
+  }>(
+    POLYMARKET_SUBGRAPHS.orderbook,
+    RECENT_TRADES_QUERY,
+    { minAmount, first: limit }
+  );
 
-    return data.map((d, i) => ({
-      wallet: d.user,
-      profit: d.profit,
-      volume: d.volume,
-      winRate: d.numTrades > 0 ? d.wins / d.numTrades : 0,
-      rank: i + 1,
-    }));
-  } catch (error) {
-    logger.error(`Leaderboard fetch error: ${error}`);
-    return [];
-  }
+  if (!data?.orderFilledEvents) return [];
+
+  return data.orderFilledEvents.map(t => ({
+    timestamp: parseInt(t.timestamp),
+    maker: t.maker,
+    taker: t.taker,
+    makerAmount: parseInt(t.makerAmountFilled) / 1_000_000,
+    takerAmount: parseInt(t.takerAmountFilled) / 1_000_000,
+    tokenId: t.takerAssetId !== '0' ? t.takerAssetId : t.makerAssetId,
+  }));
 }
 
 /**
  * Calculate whale conviction for a market
+ * Uses Gamma API for market info + PnL subgraph for positions
  */
 export async function analyzeMarketConviction(
-  marketId: string,
-  marketTitle: string,
-  currentPrice: number
-): Promise<MarketConviction> {
-  const positions = await fetchMarketPositions(marketId);
-
-  // Separate by outcome
-  const yesPositions = positions.filter(p => p.outcome === 'YES');
-  const noPositions = positions.filter(p => p.outcome === 'NO');
-
-  // Calculate volumes
-  const totalYesVolume = yesPositions.reduce((sum, p) => sum + p.size, 0);
-  const totalNoVolume = noPositions.reduce((sum, p) => sum + p.size, 0);
-
-  // Whale positions (above threshold)
-  const whaleYes = yesPositions.filter(p => p.size >= WHALE_POSITION_THRESHOLD);
-  const whaleNo = noPositions.filter(p => p.size >= WHALE_POSITION_THRESHOLD);
-  const whaleYesVolume = whaleYes.reduce((sum, p) => sum + p.size, 0);
-  const whaleNoVolume = whaleNo.reduce((sum, p) => sum + p.size, 0);
-
-  // Calculate conviction
-  const totalWhaleVolume = whaleYesVolume + whaleNoVolume;
-  let whaleConviction: 'YES' | 'NO' | 'NEUTRAL' = 'NEUTRAL';
-  let convictionStrength = 0;
-
-  if (totalWhaleVolume > 0) {
-    const yesPercent = whaleYesVolume / totalWhaleVolume;
-    const noPercent = whaleNoVolume / totalWhaleVolume;
-
-    if (yesPercent >= WHALE_CONVICTION_THRESHOLD) {
-      whaleConviction = 'YES';
-      convictionStrength = yesPercent;
-    } else if (noPercent >= WHALE_CONVICTION_THRESHOLD) {
-      whaleConviction = 'NO';
-      convictionStrength = noPercent;
-    } else {
-      convictionStrength = Math.abs(yesPercent - noPercent);
+  market: GammaMarket
+): Promise<MarketConviction | null> {
+  try {
+    // Parse token IDs from Gamma market
+    const tokenIds = JSON.parse(market.clobTokenIds || '[]') as string[];
+    if (tokenIds.length < 2) {
+      logger.warn(`Market ${market.id} missing token IDs`);
+      return null;
     }
+
+    const [yesTokenId, noTokenId] = tokenIds;
+
+    // Fetch positions for both outcomes
+    const [yesPositions, noPositions] = await Promise.all([
+      fetchMarketPositions(yesTokenId),
+      fetchMarketPositions(noTokenId),
+    ]);
+
+    // Parse current prices
+    const prices = JSON.parse(market.outcomePrices || '[0.5, 0.5]') as number[];
+    const currentPrice = prices[0] || 0.5;
+
+    // Calculate volumes
+    const totalYesVolume = yesPositions.reduce((sum, p) => sum + p.size, 0);
+    const totalNoVolume = noPositions.reduce((sum, p) => sum + p.size, 0);
+
+    // Whale positions (above threshold)
+    const whaleYes = yesPositions.filter(p => p.size >= WHALE_POSITION_THRESHOLD);
+    const whaleNo = noPositions.filter(p => p.size >= WHALE_POSITION_THRESHOLD);
+    const whaleYesVolume = whaleYes.reduce((sum, p) => sum + p.size, 0);
+    const whaleNoVolume = whaleNo.reduce((sum, p) => sum + p.size, 0);
+
+    // Calculate conviction
+    const totalWhaleVolume = whaleYesVolume + whaleNoVolume;
+    let whaleConviction: 'YES' | 'NO' | 'NEUTRAL' = 'NEUTRAL';
+    let convictionStrength = 0;
+
+    if (totalWhaleVolume > 0) {
+      const yesPercent = whaleYesVolume / totalWhaleVolume;
+      const noPercent = whaleNoVolume / totalWhaleVolume;
+
+      if (yesPercent >= WHALE_CONVICTION_THRESHOLD) {
+        whaleConviction = 'YES';
+        convictionStrength = yesPercent;
+      } else if (noPercent >= WHALE_CONVICTION_THRESHOLD) {
+        whaleConviction = 'NO';
+        convictionStrength = noPercent;
+      } else {
+        convictionStrength = Math.abs(yesPercent - noPercent);
+      }
+    }
+
+    // Enrich positions with market info
+    const enrichedYes = whaleYes.map(p => ({
+      ...p,
+      marketId: market.id,
+      marketTitle: market.question,
+      outcome: 'YES' as const,
+      currentPrice,
+    }));
+
+    const enrichedNo = whaleNo.map(p => ({
+      ...p,
+      marketId: market.id,
+      marketTitle: market.question,
+      outcome: 'NO' as const,
+      currentPrice: 1 - currentPrice,
+    }));
+
+    // Top whales (combine YES and NO, sort by size)
+    const topWhales = [...enrichedYes, ...enrichedNo]
+      .sort((a, b) => b.size - a.size)
+      .slice(0, 10);
+
+    // Whale-implied probability
+    const impliedProbFromWhales = totalWhaleVolume > 0
+      ? whaleYesVolume / totalWhaleVolume
+      : currentPrice;
+
+    return {
+      marketId: market.id,
+      marketTitle: market.question,
+      totalYesVolume,
+      totalNoVolume,
+      whaleYesVolume,
+      whaleNoVolume,
+      whaleConviction,
+      convictionStrength,
+      topWhales,
+      currentPrice,
+      impliedProbFromWhales,
+    };
+  } catch (error) {
+    logger.error(`Error analyzing market ${market.id}: ${error}`);
+    return null;
   }
-
-  // Top whales (combine YES and NO, sort by size)
-  const topWhales = [...whaleYes, ...whaleNo]
-    .sort((a, b) => b.size - a.size)
-    .slice(0, 10);
-
-  // Whale-implied probability
-  const impliedProbFromWhales = totalWhaleVolume > 0
-    ? whaleYesVolume / totalWhaleVolume
-    : currentPrice;
-
-  return {
-    marketId,
-    marketTitle,
-    totalYesVolume,
-    totalNoVolume,
-    whaleYesVolume,
-    whaleNoVolume,
-    whaleConviction,
-    convictionStrength,
-    topWhales,
-    currentPrice,
-    impliedProbFromWhales,
-  };
 }
 
 /**
  * Find markets with strong whale conviction that diverges from price
+ * This is the MAIN entry point for edge detection
  */
 export async function findWhaleConvictionSignals(
-  markets: Array<{ id: string; title: string; price: number }>,
-  minConvictionStrength: number = 0.6
+  minConvictionStrength: number = 0.6,
+  minLiquidity: number = 10000
 ): Promise<PolymarketSignal[]> {
   const signals: PolymarketSignal[] = [];
 
-  for (const market of markets) {
+  // Get active markets from Gamma API
+  const markets = await fetchActiveMarkets(200);
+
+  // Filter by liquidity
+  const liquidMarkets = markets.filter(m =>
+    parseFloat(m.liquidity || '0') >= minLiquidity
+  );
+
+  logger.info(`Analyzing ${liquidMarkets.length} liquid markets for whale conviction`);
+
+  // Analyze top markets by liquidity
+  const sortedMarkets = liquidMarkets
+    .sort((a, b) => parseFloat(b.liquidity) - parseFloat(a.liquidity))
+    .slice(0, 50);
+
+  for (const market of sortedMarkets) {
     try {
-      const conviction = await analyzeMarketConviction(
-        market.id,
-        market.title,
-        market.price
-      );
+      const conviction = await analyzeMarketConviction(market);
+
+      if (!conviction) continue;
 
       // Skip if no strong conviction
       if (conviction.convictionStrength < minConvictionStrength) continue;
 
       // Calculate divergence between whale implied price and market price
-      const divergence = Math.abs(conviction.impliedProbFromWhales - market.price);
+      const divergence = Math.abs(conviction.impliedProbFromWhales - conviction.currentPrice);
 
       // Skip if whales agree with market
       if (divergence < 0.05) continue;
@@ -471,15 +550,16 @@ export async function findWhaleConvictionSignals(
       }
 
       // Get orderbook depth for additional signal
-      const depth = await fetchOrderbookDepth(market.id);
+      const tokenIds = JSON.parse(market.clobTokenIds || '[]') as string[];
+      const depth = tokenIds[0] ? await fetchOrderbookDepth(tokenIds[0]) : null;
       const depthImbalance = depth?.depthImbalance ?? 0;
 
-      const reasoning = buildConvictionReasoning(conviction, market.price, depth);
+      const reasoning = buildConvictionReasoning(conviction, depth);
 
       signals.push({
         marketId: market.id,
-        marketTitle: market.title,
-        polymarketPrice: market.price,
+        marketTitle: market.question,
+        polymarketPrice: conviction.currentPrice,
         whaleImpliedPrice: conviction.impliedProbFromWhales,
         convictionDirection: conviction.whaleConviction,
         convictionStrength: conviction.convictionStrength,
@@ -510,7 +590,6 @@ export async function findWhaleConvictionSignals(
  */
 function buildConvictionReasoning(
   conviction: MarketConviction,
-  marketPrice: number,
   depth: OrderbookDepth | null
 ): string {
   const parts: string[] = [];
@@ -518,7 +597,7 @@ function buildConvictionReasoning(
   // Whale conviction
   const convPct = (conviction.convictionStrength * 100).toFixed(0);
   const impliedPct = (conviction.impliedProbFromWhales * 100).toFixed(0);
-  const marketPct = (marketPrice * 100).toFixed(0);
+  const marketPct = (conviction.currentPrice * 100).toFixed(0);
 
   parts.push(
     `Whales ${convPct}% ${conviction.whaleConviction} (implied: ${impliedPct}% vs market: ${marketPct}%)`

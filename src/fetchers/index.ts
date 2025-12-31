@@ -66,12 +66,13 @@ export {
   type SportsEdgeSignal,
 } from './sports-odds.js';
 
-// Polymarket on-chain data (Goldsky subgraphs)
+// Polymarket on-chain data (Goldsky subgraphs + Gamma API)
 export {
+  fetchActiveMarkets,
   fetchLargePositions,
   fetchMarketPositions,
   fetchOrderbookDepth,
-  fetchLeaderboard,
+  fetchRecentTrades,
   analyzeMarketConviction,
   findWhaleConvictionSignals,
   formatWhaleConvictionReport,
@@ -79,4 +80,6 @@ export {
   type MarketConviction,
   type OrderbookDepth,
   type PolymarketSignal,
+  type GammaMarket,
+  type RecentTrade,
 } from './polymarket-onchain.js';

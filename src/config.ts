@@ -177,15 +177,61 @@ export const TRACKED_TOPICS: Record<string, TopicConfig> = {
 
   // Sports - Major Leagues
   nfl: {
-    keywords: ['nfl', 'super bowl', 'touchdown', 'quarterback', 'football', 'chiefs', 'eagles', 'cowboys', 'patriots'],
+    keywords: [
+      'nfl', 'super bowl', 'touchdown', 'quarterback', 'football',
+      // AFC East
+      'bills', 'buffalo bills', 'dolphins', 'miami dolphins', 'patriots', 'new england patriots', 'jets', 'new york jets',
+      // AFC North
+      'ravens', 'baltimore ravens', 'bengals', 'cincinnati bengals', 'browns', 'cleveland browns', 'steelers', 'pittsburgh steelers',
+      // AFC South
+      'texans', 'houston texans', 'colts', 'indianapolis colts', 'jaguars', 'jacksonville jaguars', 'titans', 'tennessee titans',
+      // AFC West
+      'broncos', 'denver broncos', 'chiefs', 'kansas city chiefs', 'raiders', 'las vegas raiders', 'chargers', 'la chargers',
+      // NFC East
+      'cowboys', 'dallas cowboys', 'giants', 'new york giants', 'eagles', 'philadelphia eagles', 'commanders', 'washington commanders',
+      // NFC North
+      'bears', 'chicago bears', 'lions', 'detroit lions', 'packers', 'green bay packers', 'vikings', 'minnesota vikings',
+      // NFC South
+      'falcons', 'atlanta falcons', 'panthers', 'carolina panthers', 'saints', 'new orleans saints', 'buccaneers', 'tampa bay buccaneers',
+      // NFC West
+      'cardinals', 'arizona cardinals', 'rams', 'la rams', '49ers', 'san francisco 49ers', 'seahawks', 'seattle seahawks',
+    ],
     category: 'sports',
   },
   nba: {
-    keywords: ['nba', 'basketball', 'nba finals', 'playoffs', 'lebron', 'curry', 'lakers', 'celtics', 'warriors'],
+    keywords: [
+      'nba', 'basketball', 'nba finals', 'playoffs', 'lebron', 'curry',
+      // Atlantic
+      'celtics', 'boston celtics', 'nets', 'brooklyn nets', 'knicks', 'new york knicks', '76ers', 'philadelphia 76ers', 'raptors', 'toronto raptors',
+      // Central
+      'bulls', 'chicago bulls', 'cavaliers', 'cleveland cavaliers', 'pistons', 'detroit pistons', 'pacers', 'indiana pacers', 'bucks', 'milwaukee bucks',
+      // Southeast
+      'hawks', 'atlanta hawks', 'hornets', 'charlotte hornets', 'heat', 'miami heat', 'magic', 'orlando magic', 'wizards', 'washington wizards',
+      // Northwest
+      'nuggets', 'denver nuggets', 'timberwolves', 'minnesota timberwolves', 'thunder', 'oklahoma city thunder', 'blazers', 'portland trail blazers', 'jazz', 'utah jazz',
+      // Pacific
+      'warriors', 'golden state warriors', 'clippers', 'la clippers', 'lakers', 'los angeles lakers', 'suns', 'phoenix suns', 'kings', 'sacramento kings',
+      // Southwest
+      'mavericks', 'dallas mavericks', 'rockets', 'houston rockets', 'grizzlies', 'memphis grizzlies', 'pelicans', 'new orleans pelicans', 'spurs', 'san antonio spurs',
+    ],
     category: 'sports',
   },
   mlb: {
-    keywords: ['mlb', 'baseball', 'world series', 'home run', 'pitcher', 'yankees', 'dodgers', 'mets', 'cubs'],
+    keywords: [
+      'mlb', 'baseball', 'world series', 'home run', 'pitcher',
+      // AL East
+      'orioles', 'baltimore orioles', 'red sox', 'boston red sox', 'yankees', 'new york yankees', 'rays', 'tampa bay rays', 'blue jays', 'toronto blue jays',
+      // AL Central
+      'white sox', 'chicago white sox', 'guardians', 'cleveland guardians', 'tigers', 'detroit tigers', 'royals', 'kansas city royals', 'twins', 'minnesota twins',
+      // AL West
+      'astros', 'houston astros', 'angels', 'los angeles angels', 'athletics', 'oakland athletics', 'mariners', 'seattle mariners', 'rangers', 'texas rangers',
+      // NL East
+      'braves', 'atlanta braves', 'marlins', 'miami marlins', 'mets', 'new york mets', 'phillies', 'philadelphia phillies', 'nationals', 'washington nationals',
+      // NL Central
+      'cubs', 'chicago cubs', 'reds', 'cincinnati reds', 'brewers', 'milwaukee brewers', 'pirates', 'pittsburgh pirates', 'cardinals', 'st louis cardinals',
+      // NL West
+      'diamondbacks', 'arizona diamondbacks', 'rockies', 'colorado rockies', 'dodgers', 'los angeles dodgers', 'padres', 'san diego padres', 'giants', 'san francisco giants',
+    ],
     category: 'sports',
   },
   nhl: {
