@@ -87,6 +87,113 @@ const CUSTOM_LEXICON: Record<string, number> = {
   hawkish: -1,
   tightening: -1,
 
+  // ==========================================================================
+  // SPORTS SENTIMENT - Positive/Bullish for team/player
+  // ==========================================================================
+  dominant: 3,
+  dominates: 3,
+  dominating: 3,
+  blowout: 2,
+  rout: 2,
+  routed: 2,
+  crushing: 2,
+  cruising: 2,
+  clinch: 2,
+  clinches: 2,
+  clinched: 2,
+  sweep: 2,
+  sweeps: 2,
+  undefeated: 3,
+  unstoppable: 3,
+  outscored: 1,
+  outplayed: 1,
+  shutout: 2,
+  comeback: 2,
+  rallied: 2,
+  surged: 2,
+  favorite: 1,
+  favorites: 1,
+  favored: 1,
+  contender: 1,
+  contenders: 1,
+  mvp: 2,
+  allstar: 1,
+  champion: 2,
+  champions: 2,
+  championship: 1,
+  clutch: 2,
+  heroic: 2,
+  heroics: 2,
+  historic: 2,
+  recordbreaking: 3,
+  healthy: 1,
+  cleared: 1,
+  activated: 1,
+  returning: 1,
+  returns: 1,
+
+  // SPORTS SENTIMENT - Negative/Bearish for team/player
+  upset: -2,
+  upsets: -2,
+  stunned: -2,
+  shocked: -2,
+  collapse: -3,
+  collapsed: -3,
+  choke: -3,
+  choked: -3,
+  choking: -3,
+  blew: -2,
+  squandered: -2,
+  underdog: -1,
+  underdogs: -1,
+  longshot: -1,
+  eliminated: -2,
+  elimination: -2,
+  swept: -2,
+  demolished: -3,
+  destroyed: -3,
+  embarrassed: -2,
+  embarrassing: -2,
+  slump: -2,
+  slumping: -2,
+  struggling: -2,
+  struggles: -2,
+
+  // SPORTS INJURIES - Strong negative signal
+  injured: -3,
+  injury: -3,
+  injuries: -3,
+  sidelined: -3,
+  questionable: -2,
+  doubtful: -3,
+  probable: -1,
+  ruled_out: -4,
+  out_for_season: -4,
+  torn: -4,
+  sprained: -2,
+  strained: -2,
+  concussion: -3,
+  fractured: -3,
+  surgery: -3,
+  rehab: -2,
+  il: -2,          // MLB injured list
+  ir: -3,          // NFL injured reserve
+  dnp: -2,         // Did not practice
+  limited: -1,
+
+  // SPORTS TRADES/ROSTER
+  traded: 0,       // Neutral - depends on context
+  acquired: 1,
+  signed: 1,
+  signing: 1,
+  extension: 1,
+  released: -1,
+  waived: -1,
+  benched: -2,
+  demoted: -2,
+  suspended: -3,
+  suspension: -3,
+
   // Neutral
   volatility: 0,
   uncertainty: -1,
@@ -118,6 +225,7 @@ export function analyzeTextSentiment(text: string): {
   let processedText = text.toLowerCase();
 
   const phraseReplacements: Record<string, string> = {
+    // Economic phrases
     'rate cut': 'excellent bullish rally',
     'rate cuts': 'excellent bullish rally',
     'rate hike': 'terrible bearish decline',
@@ -127,6 +235,41 @@ export function analyzeTextSentiment(text: string): {
     'record high': 'amazing surge',
     'new high': 'great bullish',
     'new highs': 'great bullish',
+
+    // Sports injury phrases (strong negative)
+    'ruled out': 'devastating injured sidelined',
+    'out for season': 'devastating destroyed sidelined season-ending',
+    'out for the season': 'devastating destroyed sidelined season-ending',
+    'out indefinitely': 'devastating injured uncertain sidelined',
+    'day-to-day': 'minor questionable',
+    'game-time decision': 'uncertain questionable',
+    'torn acl': 'devastating season-ending destroyed',
+    'torn achilles': 'devastating season-ending destroyed',
+    'placed on il': 'injured sidelined negative',
+    'placed on ir': 'injured sidelined devastating',
+
+    // Sports positive phrases
+    'clinched playoff': 'dominant winning clinched victory',
+    'playoff bound': 'winning strong contender',
+    'super bowl bound': 'dominant champion winning',
+    'finals bound': 'dominant champion winning',
+    'win streak': 'dominant winning hot',
+    'winning streak': 'dominant winning unstoppable',
+    'on fire': 'dominant unstoppable winning',
+    'red hot': 'dominant winning unstoppable',
+    'world series champion': 'champion dominant winning',
+    'stanley cup champion': 'champion dominant winning',
+    'super bowl champion': 'champion dominant winning',
+    'nba champion': 'champion dominant winning',
+
+    // Sports negative phrases
+    'losing streak': 'struggling slumping losing defeated',
+    'eliminated from': 'eliminated defeated loss',
+    'missed playoffs': 'disappointed loss eliminated',
+    'blown lead': 'collapse choke devastating',
+    'upset loss': 'upset stunned losing defeated',
+    'shocking loss': 'shocked upset devastating loss',
+    'heavy underdog': 'underdog longshot unlikely',
   };
 
   for (const [phrase, replacement] of Object.entries(phraseReplacements)) {
@@ -145,10 +288,11 @@ export function analyzeTextSentiment(text: string): {
 
 /**
  * Get sentiment label from comparative score
+ * Lowered threshold from ±0.1 to ±0.05 for better sports signal detection
  */
 function getSentimentLabel(comparative: number): 'bullish' | 'bearish' | 'neutral' {
-  if (comparative >= 0.1) return 'bullish';
-  if (comparative <= -0.1) return 'bearish';
+  if (comparative >= 0.05) return 'bullish';
+  if (comparative <= -0.05) return 'bearish';
   return 'neutral';
 }
 

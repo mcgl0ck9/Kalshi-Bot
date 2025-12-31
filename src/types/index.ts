@@ -89,6 +89,9 @@ export interface EdgeOpportunity {
     matchedGame?: string;
     fedRegime?: string;
     injuryOverreaction?: number;
+    // Weather and bias signals
+    weatherBias?: string;
+    recencyBias?: boolean;
     // Polymarket whale conviction (on-chain data)
     whaleConviction?: {
       polymarketPrice: number;

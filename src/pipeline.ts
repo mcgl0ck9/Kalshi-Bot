@@ -263,7 +263,8 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
         logger.success(`  ${totalGames} games with odds data`);
 
         // Compare Kalshi sports markets to sportsbook consensus
-        const sportsEdges = findSportsEdges(kalshiMarkets, sportsOdds);
+        // Lower threshold (3%) for more sensitive edge detection
+        const sportsEdges = findSportsEdges(kalshiMarkets, sportsOdds, 0.03);
         stats.sportsEdgesFound = sportsEdges.length;
 
         if (sportsEdges.length > 0) {

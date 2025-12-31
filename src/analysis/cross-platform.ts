@@ -27,66 +27,174 @@ const ENTITY_ALIASES: Record<string, string[]> = {
   crypto: ['crypto', 'cryptocurrency', 'digital asset'],
   solana: ['solana', 'sol'],
   xrp: ['xrp', 'ripple'],
+  dogecoin: ['dogecoin', 'doge'],
+  cardano: ['cardano', 'ada'],
 
-  // People - Politics
-  trump: ['trump', 'donald trump', 'donald j trump', 'djt'],
+  // People - US Politics (Current)
+  trump: ['trump', 'donald trump', 'donald j trump', 'djt', 'trump administration'],
   biden: ['biden', 'joe biden', 'president biden'],
+  harris: ['kamala harris', 'harris', 'vice president harris'],
+  desantis: ['desantis', 'ron desantis', 'florida governor'],
+  newsom: ['newsom', 'gavin newsom', 'california governor'],
+  vance: ['jd vance', 'vance', 'vice president vance'],
+  rfk: ['rfk', 'robert kennedy', 'kennedy jr', 'rfk jr'],
+  pelosi: ['pelosi', 'nancy pelosi'],
+  mcconnell: ['mcconnell', 'mitch mcconnell'],
+  schumer: ['schumer', 'chuck schumer'],
+  johnson_speaker: ['mike johnson', 'speaker johnson'],
+
+  // People - Business/Tech Leaders
   musk: ['musk', 'elon musk', 'elon'],
+  bezos: ['bezos', 'jeff bezos'],
+  zuckerberg: ['zuckerberg', 'mark zuckerberg'],
+  altman: ['sam altman', 'altman', 'openai ceo'],
+  cook: ['tim cook', 'apple ceo'],
+  nadella: ['satya nadella', 'nadella', 'microsoft ceo'],
+  pichai: ['sundar pichai', 'pichai', 'google ceo'],
+  dimon: ['jamie dimon', 'dimon', 'jpmorgan'],
+  buffett: ['warren buffett', 'buffett', 'berkshire'],
+
+  // People - Central Bankers
   powell: ['powell', 'jerome powell', 'fed chair', 'fed chairman'],
+  yellen: ['yellen', 'janet yellen', 'treasury secretary'],
+  lagarde: ['lagarde', 'christine lagarde', 'ecb president'],
+
+  // People - World Leaders
   putin: ['putin', 'vladimir putin', 'russia president'],
   zelensky: ['zelensky', 'zelenskyy', 'ukraine president'],
   netanyahu: ['netanyahu', 'bibi', 'israel pm', 'israel prime minister'],
+  xi: ['xi jinping', 'xi', 'china president', 'chinese president'],
+  modi: ['modi', 'narendra modi', 'india pm'],
+  macron: ['macron', 'emmanuel macron', 'france president'],
+  starmer: ['starmer', 'keir starmer', 'uk pm', 'uk prime minister'],
+  trudeau: ['trudeau', 'justin trudeau', 'canada pm'],
   maduro: ['maduro', 'venezuela president', 'nicolas maduro'],
+  kim: ['kim jong un', 'kim jong-un', 'north korea'],
+  erdogan: ['erdogan', 'turkey president'],
+  milei: ['milei', 'javier milei', 'argentina president'],
 
-  // Organizations
+  // Organizations - Government
   fed: ['fed', 'federal reserve', 'fomc', 'fed rate'],
   sec: ['sec', 'securities and exchange', 'gensler'],
+  doj: ['doj', 'department of justice', 'justice department'],
+  fbi: ['fbi', 'federal bureau'],
+  cia: ['cia', 'central intelligence'],
+  scotus: ['supreme court', 'scotus', 'justices'],
+  congress: ['congress', 'senate', 'house of representatives', 'capitol'],
+
+  // Organizations - International
   nato: ['nato', 'north atlantic'],
-  opec: ['opec', 'oil cartel'],
+  opec: ['opec', 'oil cartel', 'opec+'],
+  un: ['united nations', 'un security council'],
+  imf: ['imf', 'international monetary fund'],
+  who: ['who', 'world health organization'],
+  ecb: ['ecb', 'european central bank'],
+  eu: ['european union', 'eu', 'brussels'],
 
   // Companies - Tech Giants
-  apple: ['apple', 'aapl', 'iphone', 'tim cook'],
-  microsoft: ['microsoft', 'msft', 'satya nadella'],
-  nvidia: ['nvidia', 'nvda', 'jensen huang'],
-  amazon: ['amazon', 'amzn', 'aws', 'bezos'],
-  google: ['google', 'alphabet', 'googl', 'goog'],
-  meta: ['meta', 'facebook', 'zuckerberg', 'fb'],
-  tesla: ['tesla', 'tsla'],
-  openai: ['openai', 'chatgpt', 'sam altman'],
+  apple: ['apple', 'aapl', 'iphone', 'tim cook', 'apple stock'],
+  microsoft: ['microsoft', 'msft', 'satya nadella', 'azure'],
+  nvidia: ['nvidia', 'nvda', 'jensen huang', 'nvidia stock'],
+  amazon: ['amazon', 'amzn', 'aws', 'amazon stock'],
+  google: ['google', 'alphabet', 'googl', 'goog', 'youtube'],
+  meta: ['meta', 'facebook', 'instagram', 'whatsapp'],
+  tesla: ['tesla', 'tsla', 'tesla stock', 'cybertruck'],
+  openai: ['openai', 'chatgpt', 'sam altman', 'gpt-4', 'gpt-5'],
+  anthropic: ['anthropic', 'claude', 'dario amodei'],
+
+  // Companies - Other Major
   aramco: ['aramco', 'saudi aramco', 'saudi oil'],
+  berkshire: ['berkshire', 'berkshire hathaway', 'brk'],
+  jpmorgan: ['jpmorgan', 'jp morgan', 'jpm', 'chase'],
+  visa: ['visa', 'visa stock'],
+  walmart: ['walmart', 'wmt'],
+  disney: ['disney', 'dis', 'disney+', 'bob iger'],
+  netflix: ['netflix', 'nflx'],
+  boeing: ['boeing', 'ba', 'boeing stock'],
+  spacex: ['spacex', 'starship', 'falcon'],
+  tiktok: ['tiktok', 'bytedance', 'tiktok ban'],
 
   // Topics - Economic
-  election: ['election', 'presidential', 'vote', 'voting', 'ballot'],
+  election: ['election', 'presidential', 'vote', 'voting', 'ballot', 'electoral'],
   rate: ['rate', 'interest rate', 'rate cut', 'rate hike', 'basis point', 'bps'],
-  recession: ['recession', 'economic downturn', 'depression', 'gdp decline'],
-  inflation: ['inflation', 'cpi', 'consumer price', 'pce'],
-  jobs: ['jobs', 'employment', 'unemployment', 'nonfarm', 'payroll', 'jobless'],
+  recession: ['recession', 'economic downturn', 'depression', 'gdp decline', 'soft landing', 'hard landing'],
+  inflation: ['inflation', 'cpi', 'consumer price', 'pce', 'core inflation'],
+  jobs: ['jobs', 'employment', 'unemployment', 'nonfarm', 'payroll', 'jobless', 'labor market'],
   gdp: ['gdp', 'gross domestic', 'economic growth'],
   tariff: ['tariff', 'trade war', 'import tax', 'duties'],
+  debt_ceiling: ['debt ceiling', 'debt limit', 'government shutdown'],
+  default: ['default', 'us default', 'treasury default'],
 
   // Topics - Geopolitical
   ukraine: ['ukraine', 'kyiv', 'kiev', 'ukrainian'],
   russia: ['russia', 'russian', 'moscow', 'kremlin'],
   china: ['china', 'chinese', 'beijing', 'xi jinping', 'ccp'],
+  taiwan: ['taiwan', 'taiwanese', 'taipei', 'china taiwan'],
   israel: ['israel', 'israeli', 'gaza', 'hamas', 'idf'],
+  iran: ['iran', 'iranian', 'tehran', 'ayatollah'],
   ceasefire: ['ceasefire', 'peace deal', 'armistice', 'truce'],
   war: ['war', 'conflict', 'invasion', 'military'],
+  sanctions: ['sanctions', 'sanctioned', 'embargo'],
 
   // Topics - Cannabis/Drugs
   cannabis: ['cannabis', 'marijuana', 'weed', 'pot', 'schedule', 'reschedule', 'descheduled'],
 
-  // Entertainment - Movies
-  movie: ['movie', 'film', 'box office', 'grossing', 'theatrical'],
-  oscar: ['oscar', 'academy award', 'best picture'],
-  grammy: ['grammy', 'grammys', 'album of the year'],
+  // Entertainment - Awards
+  oscar: ['oscar', 'academy award', 'best picture', 'academy awards'],
+  grammy: ['grammy', 'grammys', 'album of the year', 'record of the year'],
+  emmy: ['emmy', 'emmys', 'emmy awards', 'primetime emmy'],
+  golden_globe: ['golden globe', 'golden globes'],
+  tony: ['tony award', 'tony awards', 'broadway'],
+
+  // Entertainment - Movies/Box Office
+  movie: ['movie', 'film', 'box office', 'grossing', 'theatrical', 'opening weekend'],
+  marvel: ['marvel', 'mcu', 'avengers', 'marvel studios'],
+  dc: ['dc', 'dceu', 'dc studios', 'james gunn dc'],
+  pixar: ['pixar', 'pixar movie'],
+
+  // Entertainment - Streaming
+  streaming: ['streaming', 'subscriber', 'subscribers'],
+
+  // Entertainment - Music
+  taylor_swift: ['taylor swift', 'eras tour', 'swifties'],
+  beyonce: ['beyonce', 'beyoncé'],
+  drake: ['drake', 'drizzy'],
 
   // Sports - General
-  superbowl: ['super bowl', 'superbowl', 'nfl championship'],
-  worldseries: ['world series', 'mlb championship'],
-  nba: ['nba', 'basketball', 'nba finals'],
-  nfl: ['nfl', 'football', 'touchdowns'],
-  mlb: ['mlb', 'baseball', 'pennant'],
-  nhl: ['nhl', 'hockey', 'stanley cup'],
+  superbowl: ['super bowl', 'superbowl', 'nfl championship', 'super bowl lvix', 'super bowl 59'],
+  worldseries: ['world series', 'mlb championship', 'fall classic'],
+  nba: ['nba', 'basketball', 'nba finals', 'nba playoffs'],
+  nfl: ['nfl', 'football', 'nfl playoffs'],
+  mlb: ['mlb', 'baseball', 'pennant', 'mlb playoffs'],
+  nhl: ['nhl', 'hockey', 'stanley cup', 'nhl playoffs'],
+  cfp: ['cfp', 'college football playoff', 'national championship', 'cfb playoff'],
+  march_madness: ['march madness', 'ncaa tournament', 'final four', 'sweet sixteen', 'elite eight'],
+
+  // Sports - Events
+  masters: ['masters', 'augusta', 'masters tournament'],
+  kentucky_derby: ['kentucky derby', 'derby', 'triple crown'],
+  wimbledon: ['wimbledon', 'all england'],
+  us_open: ['us open', 'us open tennis', 'us open golf'],
+  world_cup: ['world cup', 'fifa world cup'],
+  olympics: ['olympics', 'olympic games', 'summer olympics', 'winter olympics'],
+
+  // Sports - Players (Stars)
+  lebron: ['lebron', 'lebron james', 'king james'],
+  mahomes: ['mahomes', 'patrick mahomes'],
+  ohtani: ['ohtani', 'shohei ohtani'],
+  messi: ['messi', 'lionel messi'],
+  ronaldo: ['ronaldo', 'cristiano ronaldo'],
+
+  // Weather
+  hurricane: ['hurricane', 'tropical storm', 'cyclone', 'category'],
+  tornado: ['tornado', 'twister', 'severe weather'],
+  earthquake: ['earthquake', 'seismic', 'quake'],
+
+  // AI/Tech Topics
+  ai: ['artificial intelligence', 'ai', 'machine learning', 'agi'],
+  chatbot: ['chatbot', 'llm', 'language model'],
+  autonomous: ['autonomous', 'self-driving', 'autopilot'],
+  quantum: ['quantum', 'quantum computing', 'qubit'],
 
   // NFL Teams (32) - Using team names and full city names only (no short abbreviations)
   // AFC East
@@ -205,6 +313,137 @@ const ENTITY_ALIASES: Record<string, string[]> = {
   dodgers: ['dodgers', 'los angeles dodgers', 'la dodgers'],
   padres: ['padres', 'san diego padres', 'san diego'],
   giants_mlb: ['giants', 'san francisco giants', 'san francisco'],
+
+  // NHL Teams (32)
+  // Atlantic Division
+  bruins: ['bruins', 'boston bruins', 'boston'],
+  sabres: ['sabres', 'buffalo sabres', 'buffalo'],
+  red_wings: ['red wings', 'detroit red wings', 'detroit'],
+  panthers_nhl: ['panthers', 'florida panthers', 'florida'],
+  canadiens: ['canadiens', 'montreal canadiens', 'montreal', 'habs'],
+  senators: ['senators', 'ottawa senators', 'ottawa'],
+  lightning: ['lightning', 'tampa bay lightning', 'tampa bay', 'bolts'],
+  maple_leafs: ['maple leafs', 'toronto maple leafs', 'toronto', 'leafs'],
+  // Metropolitan Division
+  hurricanes: ['hurricanes', 'carolina hurricanes', 'carolina', 'canes'],
+  blue_jackets: ['blue jackets', 'columbus blue jackets', 'columbus'],
+  devils: ['devils', 'new jersey devils', 'new jersey'],
+  islanders: ['islanders', 'new york islanders', 'ny islanders'],
+  rangers_nhl: ['rangers', 'new york rangers', 'ny rangers'],
+  flyers: ['flyers', 'philadelphia flyers', 'philadelphia', 'philly'],
+  penguins: ['penguins', 'pittsburgh penguins', 'pittsburgh', 'pens'],
+  capitals: ['capitals', 'washington capitals', 'caps'],
+  // Central Division
+  coyotes: ['coyotes', 'utah hockey club', 'arizona coyotes', 'utah'],
+  blackhawks: ['blackhawks', 'chicago blackhawks', 'hawks'],
+  avalanche: ['avalanche', 'colorado avalanche', 'colorado', 'avs'],
+  stars: ['stars', 'dallas stars', 'dallas'],
+  wild: ['wild', 'minnesota wild', 'minnesota'],
+  predators: ['predators', 'nashville predators', 'nashville', 'preds'],
+  blues: ['blues', 'st louis blues', 'st. louis blues'],
+  jets_nhl: ['jets', 'winnipeg jets', 'winnipeg'],
+  // Pacific Division
+  ducks: ['ducks', 'anaheim ducks', 'anaheim'],
+  flames: ['flames', 'calgary flames', 'calgary'],
+  oilers: ['oilers', 'edmonton oilers', 'edmonton'],
+  kings_nhl: ['kings', 'los angeles kings', 'la kings'],
+  sharks: ['sharks', 'san jose sharks', 'san jose'],
+  kraken: ['kraken', 'seattle kraken', 'seattle'],
+  canucks: ['canucks', 'vancouver canucks', 'vancouver'],
+  golden_knights: ['golden knights', 'vegas golden knights', 'vegas', 'vgk'],
+
+  // NCAAF - College Football (Major Programs)
+  // SEC
+  alabama: ['alabama', 'crimson tide', 'bama', 'roll tide'],
+  auburn: ['auburn', 'auburn tigers', 'war eagle'],
+  florida_gators: ['florida', 'florida gators', 'gators'],
+  georgia: ['georgia', 'georgia bulldogs', 'bulldogs', 'uga', 'dawgs'],
+  lsu: ['lsu', 'louisiana state', 'tigers', 'geaux tigers'],
+  ole_miss: ['ole miss', 'mississippi', 'rebels'],
+  mississippi_state: ['mississippi state', 'bulldogs', 'miss state'],
+  tennessee: ['tennessee', 'volunteers', 'vols'],
+  texas_am: ['texas a&m', 'aggies', 'tamu'],
+  kentucky: ['kentucky', 'wildcats', 'uk'],
+  missouri: ['missouri', 'mizzou', 'tigers'],
+  south_carolina: ['south carolina', 'gamecocks'],
+  arkansas: ['arkansas', 'razorbacks', 'hogs'],
+  vanderbilt: ['vanderbilt', 'commodores', 'vandy'],
+  texas_longhorns: ['texas', 'longhorns', 'hook em', 'ut'],
+  oklahoma: ['oklahoma', 'sooners', 'boomer sooner', 'ou'],
+  // Big Ten
+  ohio_state: ['ohio state', 'buckeyes', 'osu'],
+  michigan: ['michigan', 'wolverines', 'go blue'],
+  penn_state: ['penn state', 'nittany lions', 'psu'],
+  michigan_state: ['michigan state', 'spartans', 'msu'],
+  wisconsin: ['wisconsin', 'badgers'],
+  iowa: ['iowa', 'hawkeyes'],
+  minnesota_gophers: ['minnesota', 'golden gophers', 'gophers'],
+  nebraska: ['nebraska', 'cornhuskers', 'huskers'],
+  illinois: ['illinois', 'fighting illini', 'illini'],
+  purdue: ['purdue', 'boilermakers'],
+  indiana: ['indiana', 'hoosiers'],
+  northwestern: ['northwestern', 'wildcats'],
+  rutgers: ['rutgers', 'scarlet knights'],
+  maryland: ['maryland', 'terrapins', 'terps'],
+  usc: ['usc', 'trojans', 'southern cal'],
+  ucla: ['ucla', 'bruins'],
+  oregon: ['oregon', 'ducks'],
+  washington_huskies: ['washington', 'huskies', 'uw'],
+  // ACC
+  clemson: ['clemson', 'tigers'],
+  florida_state: ['florida state', 'seminoles', 'fsu', 'noles'],
+  miami_hurricanes: ['miami', 'hurricanes', 'the u'],
+  nc_state: ['nc state', 'wolfpack'],
+  north_carolina: ['north carolina', 'tar heels', 'unc'],
+  duke: ['duke', 'blue devils'],
+  wake_forest: ['wake forest', 'demon deacons'],
+  virginia: ['virginia', 'cavaliers', 'uva', 'wahoos'],
+  virginia_tech: ['virginia tech', 'hokies', 'vt'],
+  louisville: ['louisville', 'cardinals'],
+  pittsburgh: ['pittsburgh', 'pitt', 'panthers'],
+  syracuse: ['syracuse', 'orange', 'cuse'],
+  boston_college: ['boston college', 'eagles', 'bc'],
+  georgia_tech: ['georgia tech', 'yellow jackets', 'gt'],
+  notre_dame: ['notre dame', 'fighting irish', 'irish', 'nd'],
+  // Big 12
+  baylor: ['baylor', 'bears'],
+  tcu: ['tcu', 'horned frogs'],
+  texas_tech: ['texas tech', 'red raiders'],
+  kansas: ['kansas', 'jayhawks', 'ku'],
+  kansas_state: ['kansas state', 'wildcats', 'k-state'],
+  iowa_state: ['iowa state', 'cyclones'],
+  oklahoma_state: ['oklahoma state', 'cowboys', 'osu'],
+  west_virginia: ['west virginia', 'mountaineers', 'wvu'],
+  cincinnati: ['cincinnati', 'bearcats', 'cincy'],
+  ucf: ['ucf', 'knights', 'central florida'],
+  houston_cougars: ['houston', 'cougars', 'uh'],
+  byu: ['byu', 'cougars', 'brigham young'],
+  colorado_buffs: ['colorado', 'buffaloes', 'buffs'],
+  arizona_state: ['arizona state', 'sun devils', 'asu'],
+  arizona_wildcats: ['arizona', 'wildcats'],
+  utah_utes: ['utah', 'utes'],
+  // Pac-12 remnants & others
+  stanford: ['stanford', 'cardinal'],
+  cal: ['cal', 'california', 'golden bears'],
+  oregon_state: ['oregon state', 'beavers'],
+  washington_state: ['washington state', 'cougars', 'wsu'],
+
+  // NCAAB - College Basketball (Major Programs)
+  // Already have most from football, adding basketball-specific
+  gonzaga: ['gonzaga', 'bulldogs', 'zags'],
+  villanova: ['villanova', 'wildcats', 'nova'],
+  uconn: ['uconn', 'huskies', 'connecticut'],
+  creighton: ['creighton', 'bluejays'],
+  marquette: ['marquette', 'golden eagles'],
+  st_johns: ['st johns', "st. john's", 'red storm', 'johnnies'],
+  seton_hall: ['seton hall', 'pirates'],
+  xavier: ['xavier', 'musketeers'],
+  butler: ['butler', 'bulldogs'],
+  providence: ['providence', 'friars'],
+  memphis_tigers: ['memphis', 'tigers'],
+  san_diego_state: ['san diego state', 'aztecs', 'sdsu'],
+  dayton: ['dayton', 'flyers'],
+  saint_marys: ["saint mary's", 'gaels', 'st marys'],
 
   // Market Cap / Company Rankings
   marketcap: ['market cap', 'largest company', 'most valuable', 'market capitalization', 'trillion'],
@@ -327,6 +566,46 @@ const MLB_TEAMS = new Set([
   'cardinals_mlb', 'diamondbacks', 'rockies', 'dodgers', 'padres', 'giants_mlb',
 ]);
 
+const NHL_TEAMS = new Set([
+  'bruins', 'sabres', 'red_wings', 'panthers_nhl', 'canadiens', 'senators', 'lightning', 'maple_leafs',
+  'hurricanes', 'blue_jackets', 'devils', 'islanders', 'rangers_nhl', 'flyers', 'penguins', 'capitals',
+  'coyotes', 'blackhawks', 'avalanche', 'stars', 'wild', 'predators', 'blues', 'jets_nhl',
+  'ducks', 'flames', 'oilers', 'kings_nhl', 'sharks', 'kraken', 'canucks', 'golden_knights',
+]);
+
+const NCAAF_TEAMS = new Set([
+  // SEC
+  'alabama', 'auburn', 'florida_gators', 'georgia', 'lsu', 'ole_miss', 'mississippi_state',
+  'tennessee', 'texas_am', 'kentucky', 'missouri', 'south_carolina', 'arkansas', 'vanderbilt',
+  'texas_longhorns', 'oklahoma',
+  // Big Ten
+  'ohio_state', 'michigan', 'penn_state', 'michigan_state', 'wisconsin', 'iowa', 'minnesota_gophers',
+  'nebraska', 'illinois', 'purdue', 'indiana', 'northwestern', 'rutgers', 'maryland', 'usc', 'ucla',
+  'oregon', 'washington_huskies',
+  // ACC
+  'clemson', 'florida_state', 'miami_hurricanes', 'nc_state', 'north_carolina', 'duke', 'wake_forest',
+  'virginia', 'virginia_tech', 'louisville', 'pittsburgh', 'syracuse', 'boston_college', 'georgia_tech',
+  'notre_dame',
+  // Big 12
+  'baylor', 'tcu', 'texas_tech', 'kansas', 'kansas_state', 'iowa_state', 'oklahoma_state',
+  'west_virginia', 'cincinnati', 'ucf', 'houston_cougars', 'byu', 'colorado_buffs', 'arizona_state',
+  'arizona_wildcats', 'utah_utes',
+  // Others
+  'stanford', 'cal', 'oregon_state', 'washington_state',
+]);
+
+const NCAAB_TEAMS = new Set([
+  // Use NCAAF teams plus basketball-specific
+  ...NCAAF_TEAMS,
+  'gonzaga', 'villanova', 'uconn', 'creighton', 'marquette', 'st_johns', 'seton_hall',
+  'xavier', 'butler', 'providence', 'memphis_tigers', 'san_diego_state', 'dayton', 'saint_marys',
+]);
+
+// Combined set for quick lookup
+const ALL_SPORTS_TEAMS = new Set([
+  ...NFL_TEAMS, ...NBA_TEAMS, ...MLB_TEAMS, ...NHL_TEAMS, ...NCAAF_TEAMS, ...NCAAB_TEAMS,
+]);
+
 /**
  * Detect sports matchups between two sets of entities
  * Returns high boost if both have the same two teams (matchup)
@@ -336,12 +615,8 @@ function getSportsTeamsFromEntities(
   entities2: Set<string>
 ): { match: boolean; boost: number; teams?: string[] } {
   // Get sports teams from each entity set
-  const teams1 = [...entities1].filter(
-    e => NFL_TEAMS.has(e) || NBA_TEAMS.has(e) || MLB_TEAMS.has(e)
-  );
-  const teams2 = [...entities2].filter(
-    e => NFL_TEAMS.has(e) || NBA_TEAMS.has(e) || MLB_TEAMS.has(e)
-  );
+  const teams1 = [...entities1].filter(e => ALL_SPORTS_TEAMS.has(e));
+  const teams2 = [...entities2].filter(e => ALL_SPORTS_TEAMS.has(e));
 
   // Need at least one team in each
   if (teams1.length === 0 || teams2.length === 0) {

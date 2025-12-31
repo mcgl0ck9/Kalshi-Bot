@@ -235,7 +235,21 @@ export const TRACKED_TOPICS: Record<string, TopicConfig> = {
     category: 'sports',
   },
   nhl: {
-    keywords: ['nhl', 'hockey', 'stanley cup', 'goal', 'puck', 'bruins', 'rangers', 'maple leafs', 'oilers'],
+    keywords: [
+      'nhl', 'hockey', 'stanley cup', 'goal', 'puck',
+      // Atlantic
+      'bruins', 'boston bruins', 'sabres', 'buffalo sabres', 'red wings', 'detroit red wings', 'panthers', 'florida panthers',
+      'canadiens', 'montreal canadiens', 'habs', 'senators', 'ottawa senators', 'lightning', 'tampa bay lightning', 'maple leafs', 'toronto maple leafs',
+      // Metropolitan
+      'hurricanes', 'carolina hurricanes', 'blue jackets', 'columbus blue jackets', 'devils', 'new jersey devils',
+      'islanders', 'new york islanders', 'rangers', 'new york rangers', 'flyers', 'philadelphia flyers', 'penguins', 'pittsburgh penguins', 'capitals', 'washington capitals',
+      // Central
+      'coyotes', 'arizona coyotes', 'blackhawks', 'chicago blackhawks', 'avalanche', 'colorado avalanche', 'stars', 'dallas stars',
+      'wild', 'minnesota wild', 'predators', 'nashville predators', 'blues', 'st louis blues', 'jets', 'winnipeg jets',
+      // Pacific
+      'ducks', 'anaheim ducks', 'flames', 'calgary flames', 'oilers', 'edmonton oilers', 'kings', 'la kings', 'los angeles kings',
+      'sharks', 'san jose sharks', 'kraken', 'seattle kraken', 'canucks', 'vancouver canucks', 'golden knights', 'vegas golden knights',
+    ],
     category: 'sports',
   },
   soccer: {
@@ -255,11 +269,46 @@ export const TRACKED_TOPICS: Record<string, TopicConfig> = {
     category: 'sports',
   },
   college_football: {
-    keywords: ['college football', 'cfp', 'cfb', 'ncaa football', 'heisman', 'college playoff', 'sec football', 'big ten football'],
+    keywords: [
+      'college football', 'cfp', 'cfb', 'ncaa football', 'heisman', 'college playoff', 'sec football', 'big ten football',
+      // SEC
+      'alabama', 'crimson tide', 'arkansas', 'razorbacks', 'auburn', 'tigers', 'florida', 'gators', 'georgia', 'bulldogs',
+      'kentucky', 'wildcats', 'lsu', 'fighting tigers', 'mississippi state', 'ole miss', 'rebels', 'missouri', 'mizzou',
+      'south carolina', 'gamecocks', 'tennessee', 'volunteers', 'vols', 'texas a&m', 'aggies', 'vanderbilt', 'commodores',
+      // Big Ten
+      'illinois', 'illini', 'indiana', 'hoosiers', 'iowa', 'hawkeyes', 'maryland', 'terrapins', 'michigan', 'wolverines',
+      'michigan state', 'spartans', 'minnesota', 'golden gophers', 'nebraska', 'cornhuskers', 'northwestern', 'ohio state', 'buckeyes',
+      'penn state', 'nittany lions', 'purdue', 'boilermakers', 'rutgers', 'scarlet knights', 'wisconsin', 'badgers',
+      'usc', 'trojans', 'ucla', 'bruins', 'oregon', 'ducks', 'washington', 'huskies',
+      // ACC
+      'boston college', 'clemson', 'duke', 'blue devils', 'florida state', 'seminoles', 'noles', 'georgia tech', 'yellow jackets',
+      'louisville', 'miami', 'hurricanes', 'nc state', 'wolfpack', 'north carolina', 'tar heels', 'pittsburgh', 'panthers',
+      'syracuse', 'orange', 'virginia', 'cavaliers', 'virginia tech', 'hokies', 'wake forest', 'demon deacons',
+      // Big 12
+      'baylor', 'bears', 'byu', 'cougars', 'cincinnati', 'bearcats', 'colorado', 'buffaloes', 'houston', 'cougars',
+      'iowa state', 'cyclones', 'kansas', 'jayhawks', 'kansas state', 'wildcats', 'oklahoma state', 'cowboys', 'tcu', 'horned frogs',
+      'texas tech', 'red raiders', 'ucf', 'knights', 'west virginia', 'mountaineers', 'arizona', 'arizona state', 'sun devils',
+      // Other Notable
+      'notre dame', 'fighting irish', 'boise state', 'broncos', 'memphis', 'smu', 'mustangs', 'tulane', 'green wave',
+    ],
     category: 'sports',
   },
   college_basketball: {
-    keywords: ['college basketball', 'march madness', 'ncaa tournament', 'final four', 'ncaa basketball', 'cbb'],
+    keywords: [
+      'college basketball', 'march madness', 'ncaa tournament', 'final four', 'ncaa basketball', 'cbb',
+      // Basketball Powerhouses (overlaps with football)
+      'duke', 'blue devils', 'kentucky', 'wildcats', 'kansas', 'jayhawks', 'north carolina', 'tar heels', 'unc',
+      'gonzaga', 'bulldogs', 'villanova', 'purdue', 'boilermakers', 'uconn', 'huskies', 'connecticut',
+      'michigan state', 'spartans', 'arizona', 'wildcats', 'indiana', 'hoosiers', 'louisville',
+      // Basketball-specific programs
+      'creighton', 'bluejays', 'marquette', 'golden eagles', 'xavier', 'musketeers', 'providence', 'friars',
+      'saint johns', 'red storm', 'seton hall', 'pirates', 'butler', 'bulldogs', 'dayton', 'flyers',
+      'san diego state', 'aztecs', 'memphis', 'wichita state', 'shockers', 'houston', 'cougars',
+      // SEC basketball
+      'alabama', 'auburn', 'tennessee', 'volunteers', 'arkansas', 'razorbacks', 'texas a&m', 'aggies', 'florida', 'gators',
+      // Big Ten basketball
+      'michigan', 'wolverines', 'ohio state', 'buckeyes', 'illinois', 'illini', 'wisconsin', 'badgers', 'iowa', 'hawkeyes',
+    ],
     category: 'sports',
   },
   // Sports - Injuries (for overreaction detection)
