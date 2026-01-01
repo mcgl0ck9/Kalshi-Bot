@@ -15,7 +15,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type { EdgeOpportunity, CrossPlatformMatch, TopicSentiment, WhaleSignal } from '../types/index.js';
-import { logger, getUrgencyEmoji, formatCurrency } from '../utils/index.js';
+import { logger } from '../utils/index.js';
 import { DISCORD_WEBHOOK_URL, DISCORD_BOT_TOKEN } from '../config.js';
 import {
   fetchWeekendBoxOffice,
@@ -81,72 +81,81 @@ export async function testWebhook(): Promise<boolean> {
 
 /**
  * Format an edge opportunity for Discord
- * COMPACT format - one-line action, key signals only
+ * Clear, actionable format with specific reasoning
  */
 export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
-  const { market, edge, confidence, direction, urgency, signals } = opportunity;
+  const { market, edge, confidence, direction, urgency, signals, sizing } = opportunity;
 
-  // Determine urgency indicator
-  const urgencyBar = urgency === 'critical' ? '🔴 CRITICAL' :
-                     urgency === 'standard' ? '🟡 STANDARD' : '🟢 FYI';
-
-  // Action with color
+  const price = market.price * 100;
   const isYes = direction === 'BUY YES';
-  const actionEmoji = isYes ? '🟢' : '🔴';
-  const currentPrice = market.price * 100;
-  const fairValue = isYes ? currentPrice + (edge * 100) : currentPrice - (edge * 100);
+  const fairValue = isYes ? price + (edge * 100) : price - (edge * 100);
 
-  const lines: string[] = [
-    `**${urgencyBar}** | ${actionEmoji} **${direction}** @ ${currentPrice.toFixed(0)}¢ → ${fairValue.toFixed(0)}¢`,
-    `${market.title?.slice(0, 65)}${(market.title?.length ?? 0) > 65 ? '...' : ''}`,
-    `Edge: **+${(edge * 100).toFixed(1)}%** | Conf: ${(confidence * 100).toFixed(0)}%`,
-  ];
+  const urgencyMark = urgency === 'critical' ? '!!' : urgency === 'standard' ? '!' : '';
+  const actionMark = isYes ? '++' : '--';
 
-  // Compact signals - one line per type
-  const signalsList: string[] = [];
+  const lines: string[] = [];
 
-  if (signals.crossPlatform) {
-    const cp = signals.crossPlatform;
-    const cheaper = cp.kalshiPrice < cp.polymarketPrice ? 'K' : 'P';
-    signalsList.push(`K:${(cp.kalshiPrice * 100).toFixed(0)}¢/P:${(cp.polymarketPrice * 100).toFixed(0)}¢ (buy ${cheaper})`);
-  }
-  if (signals.sportsConsensus !== undefined) {
-    signalsList.push(`Sports: ${(signals.sportsConsensus * 100).toFixed(0)}% consensus`);
-  }
-  if (signals.sentiment) {
-    signalsList.push(`Sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
-  }
-  if (signals.whale) {
-    signalsList.push(`Whale: ${signals.whale.sentiment}`);
-  }
-  if (signals.fedRegime) {
-    signalsList.push(`Fed: ${signals.fedRegime}`);
-  }
-  if (signals.injuryOverreaction) {
-    signalsList.push('Injury overreaction');
-  }
-  if (signals.weatherBias) {
-    signalsList.push(`Weather: ${signals.weatherBias}`);
-  }
-  if (signals.recencyBias) {
-    signalsList.push('Recency bias');
-  }
+  // Clear action
+  lines.push(`**${actionMark} ${direction}${urgencyMark}**`);
+  lines.push('');
+  lines.push(`**${market.title}**`);
+  lines.push('');
+
+  // Price box
+  lines.push('```');
+  lines.push(`Current:    ${price.toFixed(0)} cents`);
+  lines.push(`Fair Value: ${fairValue.toFixed(0)} cents`);
+  lines.push(`Edge:       +${(edge * 100).toFixed(1)}%`);
+  lines.push('```');
+
+  // Why this edge exists
+  lines.push('');
+  lines.push('**Why:**');
+
   if (signals.measles) {
-    signalsList.push(`Measles: ${signals.measles.currentCases}→${signals.measles.projectedYearEnd} (threshold: ${signals.measles.threshold})`);
+    lines.push(`CDC: ${signals.measles.currentCases} cases YTD -> ${signals.measles.projectedYearEnd} projected`);
+    lines.push(`Threshold: ${signals.measles.threshold} cases`);
+  } else if (signals.fedSpeech) {
+    lines.push(`Fed transcripts: "${signals.fedSpeech.keyword}" appears ${(signals.fedSpeech.historicalFrequency * 100).toFixed(0)}% of time`);
+  } else if (signals.earnings) {
+    lines.push(`${signals.earnings.company}: "${signals.earnings.keyword}" -> ${(signals.earnings.impliedProbability * 100).toFixed(0)}% implied`);
+  } else if (signals.enhancedSports) {
+    const s = signals.enhancedSports;
+    lines.push(`${s.awayTeam} @ ${s.homeTeam}`);
+    lines.push(s.primaryReason);
+  } else if (signals.sportsConsensus !== undefined) {
+    lines.push(`Sportsbook consensus: ${(signals.sportsConsensus * 100).toFixed(0)}%`);
+    if (signals.matchedGame) lines.push(`Game: ${signals.matchedGame}`);
+  } else if (signals.macroEdge) {
+    lines.push(`${signals.macroEdge.indicatorName}`);
+    lines.push(signals.macroEdge.reasoning);
+  } else if (signals.optionsImplied) {
+    lines.push(signals.optionsImplied.reasoning);
+  } else if (signals.newMarket) {
+    lines.push(`New market (${signals.newMarket.ageMinutes} min old)`);
+    lines.push(`Advantage: ${signals.newMarket.earlyMoverAdvantage}`);
+  } else if (signals.recencyBias) {
+    lines.push(`Market overreacted to recent news`);
+    lines.push(`Price will likely revert toward base rate`);
+  } else if (signals.crossPlatform) {
+    const cp = signals.crossPlatform;
+    lines.push(`Kalshi ${(cp.kalshiPrice * 100).toFixed(0)}c vs Poly ${(cp.polymarketPrice * 100).toFixed(0)}c`);
+  } else if (signals.sentiment) {
+    lines.push(`Sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
+  } else {
+    lines.push(`Confidence: ${(confidence * 100).toFixed(0)}%`);
   }
 
-  if (signalsList.length > 0) {
-    lines.push(`Signals: ${signalsList.slice(0, 3).join(' | ')}`);
-  }
-
-  // Position sizing (compact)
-  if (opportunity.sizing && opportunity.sizing.positionSize > 0) {
-    lines.push(`Size: ${formatCurrency(opportunity.sizing.positionSize)} (${(opportunity.sizing.kellyFraction ?? 0) * 100}% Kelly)`);
+  // Position sizing
+  if (sizing && sizing.positionSize > 0) {
+    lines.push('');
+    lines.push(`Suggested bet: $${sizing.positionSize.toFixed(0)}`);
   }
 
   // Trade link
   if (market.url) {
-    lines.push(`[Trade on ${market.platform?.toUpperCase()}](${market.url})`);
+    lines.push('');
+    lines.push(`[Trade on Kalshi](${market.url})`);
   }
 
   return lines.join('\n');

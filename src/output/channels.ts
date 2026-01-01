@@ -1,22 +1,20 @@
 /**
  * Multi-Channel Discord Output
  *
- * Routes signals to appropriate Discord channels based on type and priority.
- * Each channel has its own webhook and filtering criteria.
+ * Routes signals to appropriate Discord channels based on Kalshi market categories.
+ * Channels align with Kalshi's classification system for easy organization.
  */
 
 import { logger } from '../utils/index.js';
 import type {
   DiscordChannel,
   ChannelConfig,
-  RoutedAlert,
   EdgeOpportunity,
   MacroEdgeSignal,
   MetaEdgeSignal,
   NewMarket,
-  CalibrationReport,
+  MarketCategory,
 } from '../types/index.js';
-import { formatEdgeAlert } from './discord.js';
 
 // =============================================================================
 // CHANNEL CONFIGURATION
@@ -29,13 +27,14 @@ const CHANNEL_CONFIGS: Map<DiscordChannel, ChannelConfig> = new Map();
  */
 export function initializeChannels(): void {
   const channelEnvMap: Record<DiscordChannel, string> = {
-    critical: 'DISCORD_WEBHOOK_CRITICAL',
-    macro: 'DISCORD_WEBHOOK_MACRO',
-    cross_platform: 'DISCORD_WEBHOOK_CROSS_PLATFORM',
-    whale: 'DISCORD_WEBHOOK_WHALE',
-    sentiment: 'DISCORD_WEBHOOK_SENTIMENT',
-    new_markets: 'DISCORD_WEBHOOK_NEW_MARKETS',
-    meta: 'DISCORD_WEBHOOK_META',
+    sports: 'DISCORD_WEBHOOK_SPORTS',
+    weather: 'DISCORD_WEBHOOK_WEATHER',
+    economics: 'DISCORD_WEBHOOK_ECONOMICS',
+    mentions: 'DISCORD_WEBHOOK_MENTIONS',
+    entertainment: 'DISCORD_WEBHOOK_ENTERTAINMENT',
+    health: 'DISCORD_WEBHOOK_HEALTH',
+    politics: 'DISCORD_WEBHOOK_POLITICS',
+    crypto: 'DISCORD_WEBHOOK_CRYPTO',
     digest: 'DISCORD_WEBHOOK_DIGEST',
     status: 'DISCORD_WEBHOOK_STATUS',
   };
@@ -46,13 +45,12 @@ export function initializeChannels(): void {
   for (const [channel, envVar] of Object.entries(channelEnvMap)) {
     const webhookUrl = process.env[envVar] ?? fallbackWebhook;
 
-    // Lowered thresholds to surface more opportunities
     CHANNEL_CONFIGS.set(channel as DiscordChannel, {
       name: channel as DiscordChannel,
       webhookUrl,
       enabled: !!webhookUrl,
-      minEdge: channel === 'critical' ? 0.08 : 0.02,  // was 0.15/0.05
-      minConfidence: channel === 'critical' ? 0.5 : 0.35,  // was 0.7/0.5
+      minEdge: 0.03,
+      minConfidence: 0.40,
     });
   }
 
@@ -68,7 +66,87 @@ export function getChannelConfig(channel: DiscordChannel): ChannelConfig | undef
 }
 
 // =============================================================================
-// MESSAGE ROUTING
+// CHANNEL ROUTING
+// =============================================================================
+
+/**
+ * Map market category to Discord channel
+ */
+function categoryToChannel(category: MarketCategory | string): DiscordChannel {
+  switch (category) {
+    case 'sports':
+      return 'sports';
+    case 'weather':
+      return 'weather';
+    case 'macro':
+      return 'economics';
+    case 'politics':
+    case 'geopolitics':
+      return 'politics';
+    case 'crypto':
+      return 'crypto';
+    case 'entertainment':
+      return 'entertainment';
+    case 'tech':
+      return 'economics'; // Tech often relates to earnings/economic
+    default:
+      return 'digest'; // Fallback
+  }
+}
+
+/**
+ * Route an opportunity to the appropriate channel based on source and category
+ */
+export function routeOpportunity(opportunity: EdgeOpportunity): DiscordChannel {
+  const { source, market, signals } = opportunity;
+
+  // Route by signal source first (more specific)
+  switch (source) {
+    case 'measles':
+      return 'health';
+
+    case 'earnings':
+      return 'mentions';
+
+    case 'sports':
+      return 'sports';
+
+    case 'macro':
+    case 'options':
+      return 'economics';
+
+    case 'new-market':
+      // Route new markets by their category
+      return categoryToChannel(market.category);
+
+    case 'sentiment':
+    case 'whale':
+    case 'cross-platform':
+    case 'combined':
+    default:
+      break;
+  }
+
+  // Check for specific signal types
+  if (signals.fedSpeech) {
+    return 'mentions';
+  }
+  if (signals.measles) {
+    return 'health';
+  }
+  if (signals.enhancedSports || signals.sportsConsensus !== undefined) {
+    return 'sports';
+  }
+  if (signals.macroEdge || signals.optionsImplied) {
+    return 'economics';
+  }
+
+  // Fall back to market category
+  return categoryToChannel(market.category);
+}
+
+// =============================================================================
+// MESSAGE SENDING
 // =============================================================================
 
 /**
@@ -79,7 +157,6 @@ export async function sendToChannel(
   content: string,
   options?: {
     embeds?: Array<Record<string, unknown>>;
-    priority?: 'critical' | 'high' | 'normal' | 'low';
   }
 ): Promise<boolean> {
   const config = CHANNEL_CONFIGS.get(channel);
@@ -95,7 +172,7 @@ export async function sendToChannel(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         content,
-        username: `Kalshi Edge | ${channel.toUpperCase()}`,
+        username: `Kalshi | ${channel.charAt(0).toUpperCase() + channel.slice(1)}`,
         embeds: options?.embeds,
       }),
     });
@@ -112,131 +189,139 @@ export async function sendToChannel(
   }
 }
 
-/**
- * Send to multiple channels simultaneously
- */
-export async function broadcast(
-  channels: DiscordChannel[],
-  content: string,
-  options?: { embeds?: Array<Record<string, unknown>> }
-): Promise<Map<DiscordChannel, boolean>> {
-  const results = new Map<DiscordChannel, boolean>();
-
-  await Promise.all(
-    channels.map(async (channel) => {
-      const success = await sendToChannel(channel, content, options);
-      results.set(channel, success);
-    })
-  );
-
-  return results;
-}
-
 // =============================================================================
-// SIGNAL ROUTING
+// ALERT FORMATTING
 // =============================================================================
 
-/**
- * Determine which channel(s) a signal should be routed to
- */
-export function routeSignal(signal: {
-  type: 'edge' | 'macro' | 'whale' | 'sentiment' | 'new_market' | 'meta';
-  edge?: number;
-  confidence?: number;
-  category?: string;
-  urgency?: 'critical' | 'standard' | 'fyi';
-}): DiscordChannel[] {
-  const channels: DiscordChannel[] = [];
-
-  // Critical channel for high-conviction signals (lowered thresholds)
-  if (signal.urgency === 'critical' ||
-      (signal.edge && signal.edge >= 0.08 && signal.confidence && signal.confidence >= 0.5)) {
-    channels.push('critical');
-  }
-
-  // Route by type
-  switch (signal.type) {
-    case 'macro':
-      channels.push('macro');
-      break;
-    case 'whale':
-      channels.push('whale');
-      break;
-    case 'sentiment':
-      channels.push('sentiment');
-      break;
-    case 'new_market':
-      channels.push('new_markets');
-      break;
-    case 'meta':
-      channels.push('meta');
-      break;
-    case 'edge':
-      // Route to cross_platform by default for edge signals
-      channels.push('cross_platform');
-      break;
-  }
-
-  return [...new Set(channels)]; // Deduplicate
-}
-
-// =============================================================================
-// FORMATTED MESSAGES
-// =============================================================================
-
-// Track sent market titles to avoid duplicates in same session
+// Track sent market IDs to avoid duplicates in same session
 const sentMarkets = new Set<string>();
 
 /**
+ * Format a clear, actionable alert for an edge opportunity
+ */
+function formatClearAlert(opportunity: EdgeOpportunity): string {
+  const { market, edge, confidence, direction, urgency, signals, sizing } = opportunity;
+
+  const price = market.price * 100;
+  const isYes = direction === 'BUY YES';
+  const fairValue = isYes ? price + (edge * 100) : price - (edge * 100);
+
+  // Header with urgency
+  const urgencyEmoji = urgency === 'critical' ? '!!' : urgency === 'standard' ? '!' : '';
+  const actionEmoji = isYes ? '++' : '--';
+
+  const lines: string[] = [];
+
+  // Clear action line
+  lines.push(`**${actionEmoji} ${direction}${urgencyEmoji}**`);
+  lines.push('');
+
+  // Market title
+  lines.push(`**${market.title}**`);
+  lines.push('');
+
+  // Simple price box
+  lines.push('```');
+  lines.push(`Current:    ${price.toFixed(0)} cents`);
+  lines.push(`Fair Value: ${fairValue.toFixed(0)} cents`);
+  lines.push(`Edge:       +${(edge * 100).toFixed(1)}%`);
+  lines.push('```');
+
+  // Why this edge exists - be specific
+  lines.push('');
+  lines.push('**Why:**');
+
+  if (signals.measles) {
+    lines.push(`CDC has ${signals.measles.currentCases} cases YTD, projecting ${signals.measles.projectedYearEnd} by year end`);
+    lines.push(`Threshold is ${signals.measles.threshold} cases`);
+  } else if (signals.fedSpeech) {
+    lines.push(`Historical Fed transcripts show "${signals.fedSpeech.keyword}" appears ${(signals.fedSpeech.historicalFrequency * 100).toFixed(0)}% of the time`);
+  } else if (signals.earnings) {
+    lines.push(`${signals.earnings.company} earnings: "${signals.earnings.keyword}" analysis suggests ${(signals.earnings.impliedProbability * 100).toFixed(0)}% probability`);
+  } else if (signals.enhancedSports) {
+    const s = signals.enhancedSports;
+    lines.push(`${s.awayTeam} @ ${s.homeTeam}`);
+    lines.push(`${s.primaryReason}`);
+    if (s.sharpEdge) lines.push(`Sharp money edge: ${(s.sharpEdge * 100).toFixed(1)}%`);
+  } else if (signals.sportsConsensus !== undefined) {
+    lines.push(`Sportsbook consensus: ${(signals.sportsConsensus * 100).toFixed(0)}%`);
+    if (signals.matchedGame) lines.push(`Game: ${signals.matchedGame}`);
+  } else if (signals.macroEdge) {
+    lines.push(`${signals.macroEdge.indicatorName}: ${signals.macroEdge.reasoning}`);
+  } else if (signals.optionsImplied) {
+    lines.push(`${signals.optionsImplied.reasoning}`);
+  } else if (signals.newMarket) {
+    lines.push(`New market (${signals.newMarket.ageMinutes} min old)`);
+    lines.push(`Early mover advantage: ${signals.newMarket.earlyMoverAdvantage}`);
+  } else if (signals.recencyBias) {
+    lines.push(`Market overreacted to recent news`);
+    lines.push(`Price will likely revert toward base rate`);
+  } else if (signals.crossPlatform) {
+    const cp = signals.crossPlatform;
+    lines.push(`Kalshi: ${(cp.kalshiPrice * 100).toFixed(0)} cents vs Polymarket: ${(cp.polymarketPrice * 100).toFixed(0)} cents`);
+  } else if (signals.sentiment) {
+    lines.push(`News sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
+  } else {
+    lines.push(`Confidence: ${(confidence * 100).toFixed(0)}%`);
+  }
+
+  // Position sizing if available
+  if (sizing && sizing.positionSize > 0) {
+    lines.push('');
+    lines.push(`Suggested bet: $${sizing.positionSize.toFixed(0)}`);
+  }
+
+  // Trade link
+  if (market.url) {
+    lines.push('');
+    lines.push(`[Trade on Kalshi](${market.url})`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Validate a market for quality before alerting
- * Returns null if valid, or an error message if invalid
  */
 function validateMarket(opportunity: EdgeOpportunity): string | null {
   const market = opportunity.market;
   const price = market.price ?? 0;
   const title = market.title ?? '';
 
-  // 1. Invalid or missing price
+  // Invalid or missing price
   if (!price || price <= 0) {
     return `invalid price: ${price}`;
   }
 
-  // 2. Edge is unrealistically high (>50%)
+  // Edge is unrealistically high (>50%)
   if (opportunity.edge > 0.50) {
     return `suspicious edge: ${(opportunity.edge * 100).toFixed(0)}%`;
   }
 
-  // 3. Price too close to extremes (illiquid markets)
+  // Price too close to extremes (illiquid markets)
   if (price < 0.02 || price > 0.98) {
-    return `extreme price: ${(price * 100).toFixed(0)}¢ (likely illiquid)`;
+    return `extreme price: ${(price * 100).toFixed(0)} cents (likely illiquid)`;
   }
 
-  // 4. Very low volume (if available)
-  const volume = market.volume ?? 0;
-  if (volume > 0 && volume < 100) {
-    return `low volume: $${volume.toFixed(0)}`;
-  }
-
-  // 5. Duplicate title in same session
-  const normalizedTitle = title.toLowerCase().slice(0, 50);
-  if (sentMarkets.has(normalizedTitle)) {
-    return 'duplicate market (already alerted)';
-  }
-
-  // 6. Confidence too low
+  // Confidence too low
   if (opportunity.confidence < 0.40) {
     return `low confidence: ${(opportunity.confidence * 100).toFixed(0)}%`;
+  }
+
+  // Duplicate market in same session (by ID)
+  const marketKey = `${market.platform}:${market.id}`;
+  if (sentMarkets.has(marketKey)) {
+    return 'duplicate market (already alerted)';
   }
 
   return null;
 }
 
 /**
- * Format and send an edge opportunity
- * Uses the enhanced formatEdgeAlert for clear position guidance
+ * Format and send an edge opportunity to the appropriate channel
  */
 export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void> {
-  // Validate market data (secondary filter - pipeline should catch most issues)
+  // Validate market data
   const validationError = validateMarket(opportunity);
   if (validationError) {
     logger.debug(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - ${validationError}`);
@@ -244,121 +329,72 @@ export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void>
   }
 
   // Mark as sent to avoid duplicates
-  const normalizedTitle = (opportunity.market.title ?? '').toLowerCase().slice(0, 50);
-  sentMarkets.add(normalizedTitle);
+  const marketKey = `${opportunity.market.platform}:${opportunity.market.id}`;
+  sentMarkets.add(marketKey);
 
-  const channels = routeSignal({
-    type: 'edge',
-    edge: opportunity.edge,
-    confidence: opportunity.confidence,
-    urgency: opportunity.urgency,
-  });
+  // Route to appropriate channel
+  const channel = routeOpportunity(opportunity);
 
-  // Use the enhanced formatting from discord.ts
-  const content = formatEdgeAlert(opportunity);
+  // Format the alert
+  const content = formatClearAlert(opportunity);
 
-  await Promise.all(channels.map(ch => sendToChannel(ch, content)));
+  await sendToChannel(channel, content);
 }
 
 /**
  * Format and send a macro edge signal
+ * These are always Fed/CPI/Jobs/GDP signals -> economics channel
  */
 export async function sendMacroAlert(signal: MacroEdgeSignal): Promise<void> {
-  const channels = routeSignal({
-    type: 'macro',
-    edge: signal.edge,
-    confidence: signal.confidence,
-    urgency: signal.signalStrength === 'strong' ? 'critical' : 'standard',
-  });
+  const dirMark = signal.direction === 'buy_yes' ? '++' : '--';
 
-  const dirEmoji = signal.direction === 'buy_yes' ? '🟢' : '🔴';
-  const strength = signal.signalStrength === 'strong' ? '💪' :
-                   signal.signalStrength === 'moderate' ? '📊' : '📉';
-
-  const content = [
-    `${strength} **MACRO EDGE: ${signal.indicatorType.toUpperCase()}**`,
+  const lines = [
+    `**${dirMark} ${signal.direction.toUpperCase()}**`,
     '',
-    `**${signal.marketTitle.slice(0, 80)}**`,
-    `${dirEmoji} **${signal.direction.toUpperCase()}** @ ${(signal.marketPrice * 100).toFixed(0)}%`,
+    `**${signal.marketTitle.slice(0, 100)}**`,
     '',
-    `Indicator: ${signal.indicatorName}`,
-    `Source: ${signal.indicatorSource}`,
-    `Implied: ${(signal.impliedProbability * 100).toFixed(0)}% | Edge: ${signal.edgePercent.toFixed(1)}%`,
-    `Confidence: ${(signal.confidence * 100).toFixed(0)}%`,
+    '```',
+    `Current:  ${(signal.marketPrice * 100).toFixed(0)} cents`,
+    `Implied:  ${(signal.impliedProbability * 100).toFixed(0)} cents`,
+    `Edge:     +${signal.edgePercent.toFixed(1)}%`,
+    '```',
     '',
+    '**Why:**',
+    `${signal.indicatorType.toUpperCase()}: ${signal.indicatorName}`,
     signal.reasoning,
     '',
-    signal.marketUrl ? `[View Market](${signal.marketUrl})` : '',
-  ].filter(Boolean).join('\n');
+    signal.marketUrl ? `[Trade on Kalshi](${signal.marketUrl})` : '',
+  ].filter(Boolean);
 
-  await Promise.all(channels.map(ch => sendToChannel(ch, content)));
+  await sendToChannel('economics', lines.join('\n'));
 }
 
 /**
  * Format and send a new market alert
  */
 export async function sendNewMarketAlert(market: NewMarket): Promise<void> {
-  const channels = routeSignal({ type: 'new_market' });
+  const channel = categoryToChannel(market.market.category);
 
-  const advantageEmoji = market.earlyMoverAdvantage === 'high' ? '🚀' :
-                         market.earlyMoverAdvantage === 'medium' ? '⚡' : '📌';
-
-  const content = [
-    `${advantageEmoji} **NEW MARKET DETECTED**`,
-    '',
-    `**${market.market.title}**`,
-    `Platform: ${market.market.platform} | Category: ${market.market.category}`,
-    `Age: ${market.ageMinutes} minutes | Liquidity: $${market.currentLiquidity.toLocaleString()}`,
-    '',
-    `Early Mover Advantage: **${market.earlyMoverAdvantage.toUpperCase()}**`,
-    market.hasExternalReference
-      ? `External Estimate: ${((market.externalEstimate ?? 0) * 100).toFixed(0)}% | Potential Edge: ${((market.potentialEdge ?? 0) * 100).toFixed(1)}%`
-      : 'No external reference available',
-    '',
-    market.market.url ? `[View Market](${market.market.url})` : '',
-  ].filter(Boolean).join('\n');
-
-  await Promise.all(channels.map(ch => sendToChannel(ch, content)));
-}
-
-/**
- * Format and send a meta edge signal
- */
-export async function sendMetaAlert(signal: MetaEdgeSignal): Promise<void> {
-  const channels = routeSignal({
-    type: 'meta',
-    edge: signal.metaEdge,
-    confidence: signal.metaConfidence,
-  });
-
-  const dirEmoji = signal.direction === 'buy_yes' ? '🟢' : '🔴';
+  const advantageEmoji = market.earlyMoverAdvantage === 'high' ? '!!' :
+                         market.earlyMoverAdvantage === 'medium' ? '!' : '';
 
   const lines = [
-    `🧠 **META EDGE SIGNAL**`,
+    `**NEW MARKET${advantageEmoji}**`,
     '',
-    `**${signal.marketTitle.slice(0, 80)}**`,
-    `${dirEmoji} **${signal.direction.toUpperCase()}** @ ${(signal.currentPrice * 100).toFixed(0)}%`,
-    `Meta Edge: ${(signal.metaEdge * 100).toFixed(1)}% | Confidence: ${(signal.metaConfidence * 100).toFixed(0)}%`,
+    `**${market.market.title}**`,
     '',
-  ];
+    `Age: ${market.ageMinutes} minutes`,
+    `Liquidity: $${market.currentLiquidity.toLocaleString()}`,
+    `Early mover advantage: ${market.earlyMoverAdvantage}`,
+    '',
+    market.potentialEdge && market.potentialEdge > 0.03
+      ? `Potential edge: +${(market.potentialEdge * 100).toFixed(1)}%`
+      : '',
+    '',
+    market.market.url ? `[View Market](${market.market.url})` : '',
+  ].filter(Boolean);
 
-  if (signal.optionsImplied) {
-    lines.push(`📈 Options (${signal.optionsImplied.source}): ${(signal.optionsImplied.edge * 100).toFixed(1)}% edge`);
-  }
-
-  if (signal.calibrationAdjustment) {
-    lines.push(`📊 Calibration: ${(signal.calibrationAdjustment.historicalBias * 100).toFixed(1)}% historical bias`);
-  }
-
-  if (signal.newMarketBonus) {
-    lines.push(`🆕 New Market: ${signal.newMarketBonus.ageMinutes}min old, ${(signal.newMarketBonus.earlyMoverEdge * 100).toFixed(1)}% early edge`);
-  }
-
-  lines.push('', signal.reasoning);
-  lines.push('', signal.url ? `[View Market](${signal.url})` : '');
-
-  const content = lines.filter(Boolean).join('\n');
-  await Promise.all(channels.map(ch => sendToChannel(ch, content)));
+  await sendToChannel(channel, lines.join('\n'));
 }
 
 /**
@@ -373,24 +409,21 @@ export async function sendDailyDigest(stats: {
   whaleSignals: number;
   calibrationScore: number;
 }): Promise<void> {
-  const content = [
-    `📋 **DAILY DIGEST** - ${new Date().toLocaleDateString()}`,
+  const lines = [
+    `**DAILY DIGEST** - ${new Date().toLocaleDateString()}`,
     '',
-    `**Summary**`,
-    `Total Opportunities: ${stats.totalOpportunities}`,
-    `Critical Alerts: ${stats.criticalAlerts}`,
+    `Opportunities: ${stats.totalOpportunities}`,
     `New Markets: ${stats.newMarkets}`,
-    `Whale Signals: ${stats.whaleSignals}`,
     '',
     stats.topEdge
-      ? `**Top Edge:** ${stats.topEdge.title.slice(0, 50)}... (${(stats.topEdge.edge * 100).toFixed(1)}%)`
+      ? `Top Edge: ${stats.topEdge.title.slice(0, 50)}... (+${(stats.topEdge.edge * 100).toFixed(1)}%)`
       : 'No significant edges today',
     '',
     `Avg Confidence: ${(stats.avgConfidence * 100).toFixed(0)}%`,
-    `Calibration Score: ${stats.calibrationScore.toFixed(3)} (lower is better)`,
-  ].join('\n');
+    `Calibration: ${stats.calibrationScore.toFixed(3)} Brier`,
+  ];
 
-  await sendToChannel('digest', content);
+  await sendToChannel('digest', lines.join('\n'));
 }
 
 /**
@@ -404,23 +437,29 @@ export async function sendStatusUpdate(status: {
   marketsTracked: number;
   predictionsActive: number;
 }): Promise<void> {
-  const emoji = status.healthy ? '✅' : '⚠️';
+  const emoji = status.healthy ? 'OK' : 'WARN';
 
-  const content = [
-    `${emoji} **SYSTEM STATUS**`,
+  const lines = [
+    `**SYSTEM STATUS: ${emoji}**`,
     '',
-    `Health: ${status.healthy ? 'Healthy' : 'Degraded'}`,
     `Uptime: ${Math.floor(status.uptime / 3600)}h ${Math.floor((status.uptime % 3600) / 60)}m`,
     `Last Scan: ${status.lastScan}`,
     `Markets Tracked: ${status.marketsTracked}`,
     `Active Predictions: ${status.predictionsActive}`,
     '',
     status.errors.length > 0
-      ? `**Recent Errors:**\n${status.errors.slice(0, 3).map(e => `- ${e}`).join('\n')}`
-      : 'No recent errors',
-  ].join('\n');
+      ? `Errors:\n${status.errors.slice(0, 3).map(e => `- ${e}`).join('\n')}`
+      : 'No errors',
+  ];
 
-  await sendToChannel('status', content);
+  await sendToChannel('status', lines.join('\n'));
+}
+
+/**
+ * Clear sent markets cache (call between scans)
+ */
+export function clearSentMarketsCache(): void {
+  sentMarkets.clear();
 }
 
 // Initialize on module load

@@ -52,7 +52,6 @@ import {
   analyzeAllInjuryOverreactions,
   analyzeWeatherMarkets,
   analyzeMarketsForRecencyBiasSimple,
-  recencyBiasToMacroEdgeSignal,
   findCrossPlatformConvictionEdges,
   analyzeCityWeatherMarkets,
   cityWeatherEdgeToOpportunity,
@@ -491,10 +490,8 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       if (recencySignals.length > 0) {
         logger.success(`  ${recencySignals.length} recency bias signals`);
 
-        // Convert to macro signals and opportunities
+        // Convert to opportunities only (NOT macro signals - recency bias is not macro)
         for (const sig of recencySignals.slice(0, 3)) {
-          macroSignals.push(recencyBiasToMacroEdgeSignal(sig));
-
           const opp: EdgeOpportunity = {
             market: sig.market,
             source: 'combined',
@@ -502,7 +499,9 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
             confidence: sig.confidence,
             urgency: sig.overreactionFactor > 2.5 ? 'critical' : sig.overreactionFactor > 2.0 ? 'standard' : 'fyi',
             direction: sig.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
-            signals: {},
+            signals: {
+              recencyBias: true,
+            },
           };
           opp.sizing = calculateAdaptivePosition(bankroll, opp);
           opportunities.push(opp);

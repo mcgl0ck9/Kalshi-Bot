@@ -244,14 +244,15 @@ Optional: `KALSHI_API_KEY_ID`, `NEWS_API_KEY`, `ODDS_API_KEY`, `BANKROLL`, `MIN_
 
 ### Discord Channels (Optional)
 
-For segmented alerts, configure separate webhooks:
-- `DISCORD_WEBHOOK_CRITICAL` - High conviction signals only
-- `DISCORD_WEBHOOK_MACRO` - Fed, CPI, Jobs, GDP edges
-- `DISCORD_WEBHOOK_CROSS_PLATFORM` - Kalshi vs Polymarket divergences
-- `DISCORD_WEBHOOK_WHALE` - Smart money movements
-- `DISCORD_WEBHOOK_SENTIMENT` - News sentiment edges
-- `DISCORD_WEBHOOK_NEW_MARKETS` - Fresh market opportunities
-- `DISCORD_WEBHOOK_META` - Options-implied, calibration signals
+For segmented alerts aligned with Kalshi categories:
+- `DISCORD_WEBHOOK_SPORTS` - NFL, NBA, MLB, NHL, NCAAF, NCAAB
+- `DISCORD_WEBHOOK_WEATHER` - Temperature, precipitation, climate
+- `DISCORD_WEBHOOK_ECONOMICS` - Fed rates, CPI, Jobs, GDP
+- `DISCORD_WEBHOOK_MENTIONS` - Fed speech keywords, earnings mentions
+- `DISCORD_WEBHOOK_ENTERTAINMENT` - Movies, RT scores, box office, awards
+- `DISCORD_WEBHOOK_HEALTH` - Measles, disease tracking
+- `DISCORD_WEBHOOK_POLITICS` - Elections, government, policy
+- `DISCORD_WEBHOOK_CRYPTO` - Bitcoin, Ethereum, crypto markets
 - `DISCORD_WEBHOOK_DIGEST` - Daily summary
 - `DISCORD_WEBHOOK_STATUS` - System health
 

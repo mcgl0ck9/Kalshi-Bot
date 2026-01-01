@@ -13,13 +13,14 @@
 // =============================================================================
 
 export type DiscordChannel =
-  | 'critical'          // High conviction signals only
-  | 'macro'             // Fed, CPI, Jobs, GDP
-  | 'cross_platform'    // Kalshi vs Polymarket divergences
-  | 'whale'             // Smart money movements
-  | 'sentiment'         // News sentiment edges
-  | 'new_markets'       // Fresh market opportunities
-  | 'meta'              // Options-implied, calibration, alt-data
+  | 'sports'            // NFL, NBA, MLB, NHL, NCAAF, NCAAB
+  | 'weather'           // Temperature, precipitation, climate
+  | 'economics'         // Fed rates, CPI, Jobs, GDP
+  | 'mentions'          // Fed speech keywords, earnings mentions
+  | 'entertainment'     // Movies, RT scores, box office, awards
+  | 'health'            // Measles, disease tracking
+  | 'politics'          // Elections, government, policy
+  | 'crypto'            // Bitcoin, Ethereum, crypto markets
   | 'digest'            // Daily summary
   | 'status';           // System health
 
