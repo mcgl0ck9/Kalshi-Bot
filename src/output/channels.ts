@@ -236,10 +236,10 @@ function validateMarket(opportunity: EdgeOpportunity): string | null {
  * Uses the enhanced formatEdgeAlert for clear position guidance
  */
 export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void> {
-  // Validate market data
+  // Validate market data (secondary filter - pipeline should catch most issues)
   const validationError = validateMarket(opportunity);
   if (validationError) {
-    logger.warn(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - ${validationError}`);
+    logger.debug(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - ${validationError}`);
     return;
   }
 

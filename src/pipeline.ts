@@ -717,8 +717,30 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     }
 
+    // Filter out invalid opportunities before sorting
+    const validOpportunities = opportunities.filter(opp => {
+      const price = opp.market.price ?? 0;
+      const edge = opp.edge ?? 0;
+
+      // Must have valid price (not 0, not extreme)
+      if (price <= 0 || price >= 1) return false;
+
+      // Must have reasonable edge (<50%)
+      if (edge > 0.50) return false;
+
+      // Must have minimum confidence
+      if (opp.confidence < 0.40) return false;
+
+      return true;
+    });
+
+    const filtered = opportunities.length - validOpportunities.length;
+    if (filtered > 0) {
+      logger.debug(`Filtered ${filtered} invalid opportunities (bad price/edge/confidence)`);
+    }
+
     // Sort by edge magnitude and urgency (basic sort before ML)
-    opportunities.sort((a, b) => {
+    validOpportunities.sort((a, b) => {
       if (a.urgency !== b.urgency) {
         const urgencyOrder = { critical: 0, standard: 1, fyi: 2 };
         return urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
@@ -726,9 +748,9 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       return b.edge - a.edge;
     });
 
-    stats.opportunitiesFound = opportunities.length;
+    stats.opportunitiesFound = validOpportunities.length;
 
-    logger.success(`${opportunities.length} total opportunities`);
+    logger.success(`${validOpportunities.length} total opportunities`);
 
     // ========== STEP 7.5: ML SCORING ==========
     logger.step(7.5, 'Applying ML scoring...');
@@ -738,7 +760,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 
     if (modelStatus.available) {
       logger.info(`Using ML model v${modelStatus.version} (${modelStatus.trainingSamples} samples, ${(modelStatus.accuracy * 100).toFixed(0)}% acc)`);
-      scoredOpportunities = enhanceOpportunities(opportunities, 20);
+      scoredOpportunities = enhanceOpportunities(validOpportunities, 20);
 
       // Log top ML-ranked opportunities
       for (const opp of scoredOpportunities.slice(0, 3)) {
@@ -747,7 +769,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     } else {
       logger.info('No ML model available, using raw ranking');
       // Convert to ScoredOpportunity format without ML scoring
-      scoredOpportunities = opportunities.slice(0, 20).map(opp => ({
+      scoredOpportunities = validOpportunities.slice(0, 20).map(opp => ({
         ...opp,
         mlScore: 0.5,
         adjustedConfidence: opp.confidence,
