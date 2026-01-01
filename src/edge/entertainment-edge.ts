@@ -322,8 +322,19 @@ export async function detectEntertainmentEdges(
   // Sort by edge size
   edges.sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
 
-  logger.info(`Found ${edges.length} entertainment edges`);
-  return edges;
+  // Deduplicate: only keep best edge per movie
+  const bestPerMovie = new Map<string, EntertainmentEdge>();
+  for (const edge of edges) {
+    const key = normalizeMovieTitle(edge.movieTitle);
+    const existing = bestPerMovie.get(key);
+    if (!existing || edge.edge > existing.edge) {
+      bestPerMovie.set(key, edge);
+    }
+  }
+
+  const dedupedEdges = Array.from(bestPerMovie.values());
+  logger.info(`Found ${dedupedEdges.length} entertainment edges (deduplicated from ${edges.length})`);
+  return dedupedEdges;
 }
 
 /**

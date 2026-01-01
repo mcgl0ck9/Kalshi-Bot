@@ -581,7 +581,17 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
             confidence: edge.confidence,
             urgency: edge.edge > 0.15 ? 'critical' : edge.edge > 0.08 ? 'standard' : 'fyi',
             direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
-            signals: {},
+            signals: {
+              entertainment: {
+                movieTitle: edge.movieTitle,
+                currentScore: edge.currentScore ?? 0,
+                threshold: edge.threshold ?? 0,
+                scoreType: edge.scoreType ?? 'tomatometer',
+                reviewCount: edge.reviewCount,
+                buffer: (edge.currentScore ?? 0) - (edge.threshold ?? 0),
+                sources: edge.movieData?.sources ?? [],
+              },
+            },
           };
           opp.sizing = calculateAdaptivePosition(bankroll, opp);
           opportunities.push(opp);

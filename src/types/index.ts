@@ -156,6 +156,16 @@ export interface EdgeOpportunity {
       hasExternalReference: boolean;
       similarMarkets?: number;
     };
+    // Entertainment edge (RT scores, box office)
+    entertainment?: {
+      movieTitle: string;
+      currentScore: number;
+      threshold: number;
+      scoreType: 'tomatometer' | 'audience';
+      reviewCount?: number;
+      buffer: number;  // currentScore - threshold
+      sources: string[];
+    };
   };
   sizing?: PositionSizing;
 }

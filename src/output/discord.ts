@@ -90,22 +90,26 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
   const isYes = direction === 'BUY YES';
   const fairValue = isYes ? price + (edge * 100) : price - (edge * 100);
 
-  const urgencyMark = urgency === 'critical' ? '!!' : urgency === 'standard' ? '!' : '';
-  const actionMark = isYes ? '++' : '--';
-
   const lines: string[] = [];
 
-  // Clear action
-  lines.push(`**${actionMark} ${direction}${urgencyMark}**`);
+  // Crystal clear action header
+  if (isYes) {
+    lines.push(`**BUY YES @ ${price.toFixed(0)}¢**`);
+    lines.push(`Pay ${price.toFixed(0)}¢ → Win ${(100 - price).toFixed(0)}¢ if YES`);
+  } else {
+    lines.push(`**BUY NO @ ${(100 - price).toFixed(0)}¢**`);
+    lines.push(`Pay ${(100 - price).toFixed(0)}¢ → Win ${price.toFixed(0)}¢ if NO`);
+  }
   lines.push('');
+
   lines.push(`**${market.title}**`);
   lines.push('');
 
   // Price box
   lines.push('```');
-  lines.push(`Current:    ${price.toFixed(0)} cents`);
-  lines.push(`Fair Value: ${fairValue.toFixed(0)} cents`);
-  lines.push(`Edge:       +${(edge * 100).toFixed(1)}%`);
+  lines.push(`Market price: ${price.toFixed(0)}¢ YES / ${(100-price).toFixed(0)}¢ NO`);
+  lines.push(`Our estimate: ${fairValue.toFixed(0)}¢ YES`);
+  lines.push(`Edge:         +${(edge * 100).toFixed(1)}%`);
   lines.push('```');
 
   // Why this edge exists
@@ -142,6 +146,16 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     lines.push(`Kalshi ${(cp.kalshiPrice * 100).toFixed(0)}c vs Poly ${(cp.polymarketPrice * 100).toFixed(0)}c`);
   } else if (signals.sentiment) {
     lines.push(`Sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
+  } else if (signals.entertainment) {
+    const ent = signals.entertainment;
+    const scoreIcon = ent.currentScore >= 60 ? '🍅' : '🤢';
+    lines.push(`${scoreIcon} RT Score: ${ent.currentScore}% (${ent.reviewCount ?? 'unknown'} reviews)`);
+    lines.push(`Threshold: ${ent.threshold}% | Buffer: ${ent.buffer > 0 ? '+' : ''}${ent.buffer} points`);
+    if (ent.buffer > 0) {
+      lines.push(`Score is ABOVE threshold - high probability of staying above`);
+    } else {
+      lines.push(`Score is BELOW threshold - unlikely to rise`);
+    }
   } else {
     lines.push(`Confidence: ${(confidence * 100).toFixed(0)}%`);
   }
