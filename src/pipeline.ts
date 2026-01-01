@@ -101,6 +101,7 @@ export interface PipelineResult {
     whaleConvictionSignals: number;
     macroEdgeSignals: number;
     optionsImpliedSignals: number;
+    enhancedSportsEdges: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -141,6 +142,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     whaleConvictionSignals: 0,
     macroEdgeSignals: 0,
     optionsImpliedSignals: 0,
+    enhancedSportsEdges: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -343,6 +345,71 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       } catch (error) {
         logger.warn(`  Sports odds fetch failed: ${error}`);
       }
+    }
+
+    // 6.5.3b: Enhanced Sports Edge Detection (sharp/square + injuries + weather)
+    logger.info('  Checking enhanced sports edges...');
+    try {
+      const { detectEnhancedSportsEdges } = await import('./edge/enhanced-sports-edge.js');
+
+      // Check each major sport
+      const sports: Array<'nfl' | 'nba' | 'mlb' | 'nhl'> = ['nfl', 'nba', 'mlb', 'nhl'];
+      let totalEnhancedEdges = 0;
+
+      for (const sport of sports) {
+        const sportMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          const category = m.category?.toLowerCase() ?? '';
+          return category === 'sports' || title.includes(sport) ||
+                 (sport === 'nfl' && (title.includes('football') || title.includes('super bowl'))) ||
+                 (sport === 'nba' && title.includes('basketball')) ||
+                 (sport === 'mlb' && title.includes('baseball')) ||
+                 (sport === 'nhl' && title.includes('hockey'));
+        });
+
+        if (sportMarkets.length === 0) continue;
+
+        const enhancedEdges = await detectEnhancedSportsEdges(sportMarkets, sport);
+
+        if (enhancedEdges.length > 0) {
+          logger.info(`    ${sport.toUpperCase()}: ${enhancedEdges.length} enhanced edges`);
+          totalEnhancedEdges += enhancedEdges.length;
+
+          // Convert to opportunities
+          for (const edge of enhancedEdges.slice(0, 3)) {
+            const opp: EdgeOpportunity = {
+              market: edge.market,
+              source: 'sports',
+              edge: edge.compositeEdge,
+              confidence: edge.confidence,
+              urgency: edge.compositeEdge > 0.08 ? 'critical' : edge.compositeEdge > 0.04 ? 'standard' : 'fyi',
+              direction: edge.direction === 'home' ? 'BUY YES' : 'BUY NO',
+              signals: {
+                enhancedSports: {
+                  sport,
+                  homeTeam: edge.homeTeam,
+                  awayTeam: edge.awayTeam,
+                  compositeEdge: edge.compositeEdge,
+                  sharpEdge: edge.sharpEdge?.edge,
+                  injuryAdvantage: edge.injuryEdge?.healthAdvantage,
+                  weatherImpact: edge.weatherEdge?.impactScore,
+                  signals: edge.signals,
+                  primaryReason: edge.primaryReason,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      }
+
+      stats.enhancedSportsEdges = totalEnhancedEdges;
+      if (totalEnhancedEdges > 0) {
+        logger.success(`  ${totalEnhancedEdges} enhanced sports edges found`);
+      }
+    } catch (error) {
+      logger.warn(`  Enhanced sports edge detection failed: ${error}`);
     }
 
     // 6.5.4: Weather Forecast Overreaction
@@ -1041,6 +1108,73 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     await sendToChannel('digest', summary);
 
     logger.success(`Sent ${stats.alertsSent} alerts`);
+
+    // ========== STEP 8.5: RECORD PREDICTIONS FOR CALIBRATION ==========
+    logger.step(8.5, 'Recording predictions for calibration tracking...');
+    try {
+      const {
+        recordPrediction,
+        getCalibrationReport,
+        formatCalibrationReport,
+      } = await import('./edge/calibration-tracker.js');
+
+      // Record top opportunities as predictions for future calibration
+      let predictionsRecorded = 0;
+      for (const opp of scoredOpportunities.slice(0, 10)) {
+        try {
+          // Determine signal sources from the opportunity
+          const signalSources: string[] = [];
+          if (opp.signals.crossPlatform) signalSources.push('cross-platform');
+          if (opp.signals.sentiment) signalSources.push('sentiment');
+          if (opp.signals.whale) signalSources.push('whale');
+          if (opp.signals.sportsConsensus) signalSources.push('sports-odds');
+          if (opp.signals.whaleConviction) signalSources.push('whale-conviction');
+          if (opp.signals.fedSpeech) signalSources.push('fed-speech');
+          if (opp.signals.measles) signalSources.push('measles');
+          if (opp.signals.earnings) signalSources.push('earnings');
+          if (opp.signals.macroEdge) signalSources.push('macro');
+          if (opp.signals.optionsImplied) signalSources.push('options');
+          if (opp.signals.enhancedSports) signalSources.push('enhanced-sports');
+          if (signalSources.length === 0) signalSources.push(opp.source);
+
+          // Calculate our implied estimate based on direction and edge
+          const ourEstimate = opp.direction === 'BUY YES'
+            ? opp.market.price + opp.edge
+            : opp.market.price - opp.edge;
+
+          recordPrediction({
+            marketId: opp.market.id,
+            marketTitle: opp.market.title,
+            platform: opp.market.platform,
+            category: opp.market.category,
+            ourEstimate: Math.max(0.01, Math.min(0.99, ourEstimate)),
+            marketPrice: opp.market.price,
+            confidence: opp.adjustedConfidence ?? opp.confidence,
+            signalSources,
+          });
+
+          predictionsRecorded++;
+        } catch (err) {
+          // Skip individual prediction errors
+        }
+      }
+
+      if (predictionsRecorded > 0) {
+        logger.info(`  Recorded ${predictionsRecorded} predictions for calibration`);
+      }
+
+      // Get calibration report for logging
+      const calibrationReport = getCalibrationReport();
+      if (calibrationReport.resolvedPredictions >= 10) {
+        logger.info(`  Calibration: ${(calibrationReport.accuracy * 100).toFixed(0)}% accuracy, ${calibrationReport.brierScore.toFixed(3)} Brier (${calibrationReport.resolvedPredictions} resolved)`);
+
+        if (calibrationReport.isOverconfident) {
+          logger.warn('  ⚠️ Historical data suggests overconfidence - consider reducing position sizes');
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Calibration tracking failed: ${error}`);
+    }
 
     // ========== COMPLETE ==========
     const duration = (Date.now() - startTime) / 1000;

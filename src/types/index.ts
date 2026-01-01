@@ -75,7 +75,7 @@ export interface SentimentEdge {
 
 export interface EdgeOpportunity {
   market: Market;
-  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro' | 'options';
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro' | 'options' | 'sports';
   edge: number;
   confidence: number;
   urgency: 'critical' | 'standard' | 'fyi';
@@ -134,6 +134,18 @@ export interface EdgeOpportunity {
       marketPrice: number;
       dataType: 'fed' | 'spx' | 'recession';
       reasoning: string;
+    };
+    // Enhanced sports edge (sharp/square, injuries, weather combined)
+    enhancedSports?: {
+      sport: string;
+      homeTeam: string;
+      awayTeam: string;
+      compositeEdge: number;
+      sharpEdge?: number;
+      injuryAdvantage?: string;
+      weatherImpact?: number;
+      signals: string[];
+      primaryReason: string;
     };
   };
   sizing?: PositionSizing;
