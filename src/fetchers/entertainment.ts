@@ -400,18 +400,53 @@ export async function fetchMovieBoxOffice(movieSlug: string): Promise<BoxOfficeD
 
 /**
  * Common movie title variations for matching Kalshi markets
+ * Maps Kalshi market titles to RT slugs
  */
-const TITLE_NORMALIZATIONS: Record<string, string[]> = {
-  // Add known title variations here
-  // 'normalized_slug': ['kalshi variation', 'another variation']
+const TITLE_NORMALIZATIONS: Record<string, string> = {
+  // Sequels with numbers
+  'sonic 3': 'sonic_the_hedgehog_3',
+  'sonic the hedgehog 3': 'sonic_the_hedgehog_3',
+  'downton abbey 3': 'downton_abbey_a_new_era',  // May need update when title known
+  'mufasa': 'mufasa_the_lion_king',
+  'mufasa the lion king': 'mufasa_the_lion_king',
+
+  // Movies with subtitles or special characters
+  'soulm8te': 'soulm8te_2025',  // AI movie with number in title
+  'soul m8te': 'soulm8te_2025',
+
+  // Common title variations
+  'primate': 'primate_2025',
+  'the amateur': 'the_amateur_2025',
+  'send help': 'send_help',
+  'running man': 'the_running_man',
+  'the running man': 'the_running_man_2025',
+
+  // Franchise movies
+  'captain america brave new world': 'captain_america_brave_new_world',
+  'mission impossible 8': 'mission_impossible_dead_reckoning_part_two',
+
+  // Awards season movies
+  'conclave': 'conclave',
+  'anora': 'anora',
+  'wicked': 'wicked_2024',
+  'gladiator 2': 'gladiator_ii',
+  'gladiator ii': 'gladiator_ii',
 };
 
 /**
  * Normalize a movie title for matching
+ * First checks the correction map, then falls back to standard normalization
  */
 export function normalizeMovieTitle(title: string): string {
-  return title
-    .toLowerCase()
+  const lower = title.toLowerCase().trim();
+
+  // Check if we have a known correction
+  if (TITLE_NORMALIZATIONS[lower]) {
+    return TITLE_NORMALIZATIONS[lower];
+  }
+
+  // Standard normalization
+  return lower
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, '_')
     .replace(/^(the|a|an)_/, '')

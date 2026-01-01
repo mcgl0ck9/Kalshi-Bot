@@ -27,6 +27,9 @@ import {
   type LeagueTeams,
 } from '../data/teams.js';
 
+// Track if we've already warned about invalid API key (to avoid spam)
+let oddsApiKeyWarned = false;
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -150,11 +153,18 @@ export async function fetchSportOdds(sport: keyof typeof SPORT_KEYS): Promise<Sp
 
     if (!response.ok) {
       if (response.status === 401) {
-        logger.warn('ODDS_API_KEY is invalid or expired');
+        // Only log once per session to avoid spam
+        if (!oddsApiKeyWarned) {
+          oddsApiKeyWarned = true;
+          logger.warn('ODDS_API_KEY is invalid or expired. Get a new key at: https://the-odds-api.com/');
+        }
       } else if (response.status === 429) {
-        logger.warn('The Odds API rate limit exceeded');
+        logger.warn('The Odds API rate limit exceeded (500 requests/month for free tier)');
+      } else if (response.status === 404) {
+        // Sport might not have any games scheduled - not an error
+        logger.debug(`No games found for ${sport}`);
       } else {
-        logger.warn(`The Odds API error: ${response.status}`);
+        logger.warn(`The Odds API error for ${sport}: ${response.status}`);
       }
       return [];
     }
