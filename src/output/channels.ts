@@ -184,22 +184,68 @@ export function routeSignal(signal: {
 // FORMATTED MESSAGES
 // =============================================================================
 
+// Track sent market titles to avoid duplicates in same session
+const sentMarkets = new Set<string>();
+
+/**
+ * Validate a market for quality before alerting
+ * Returns null if valid, or an error message if invalid
+ */
+function validateMarket(opportunity: EdgeOpportunity): string | null {
+  const market = opportunity.market;
+  const price = market.price ?? 0;
+  const title = market.title ?? '';
+
+  // 1. Invalid or missing price
+  if (!price || price <= 0) {
+    return `invalid price: ${price}`;
+  }
+
+  // 2. Edge is unrealistically high (>50%)
+  if (opportunity.edge > 0.50) {
+    return `suspicious edge: ${(opportunity.edge * 100).toFixed(0)}%`;
+  }
+
+  // 3. Price too close to extremes (illiquid markets)
+  if (price < 0.02 || price > 0.98) {
+    return `extreme price: ${(price * 100).toFixed(0)}¢ (likely illiquid)`;
+  }
+
+  // 4. Very low volume (if available)
+  const volume = market.volume ?? 0;
+  if (volume > 0 && volume < 100) {
+    return `low volume: $${volume.toFixed(0)}`;
+  }
+
+  // 5. Duplicate title in same session
+  const normalizedTitle = title.toLowerCase().slice(0, 50);
+  if (sentMarkets.has(normalizedTitle)) {
+    return 'duplicate market (already alerted)';
+  }
+
+  // 6. Confidence too low
+  if (opportunity.confidence < 0.40) {
+    return `low confidence: ${(opportunity.confidence * 100).toFixed(0)}%`;
+  }
+
+  return null;
+}
+
 /**
  * Format and send an edge opportunity
  * Uses the enhanced formatEdgeAlert for clear position guidance
  */
 export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void> {
-  // Validate market data - skip if price is 0 or undefined (bad data)
-  if (!opportunity.market.price || opportunity.market.price <= 0) {
-    logger.warn(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - invalid price: ${opportunity.market.price}`);
+  // Validate market data
+  const validationError = validateMarket(opportunity);
+  if (validationError) {
+    logger.warn(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - ${validationError}`);
     return;
   }
 
-  // Skip if edge is unrealistically high (likely bad data)
-  if (opportunity.edge > 0.50) {
-    logger.warn(`Skipping alert for "${opportunity.market.title?.slice(0, 50)}" - suspicious edge: ${(opportunity.edge * 100).toFixed(0)}%`);
-    return;
-  }
+  // Mark as sent to avoid duplicates
+  const normalizedTitle = (opportunity.market.title ?? '').toLowerCase().slice(0, 50);
+  sentMarkets.add(normalizedTitle);
 
   const channels = routeSignal({
     type: 'edge',
