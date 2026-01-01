@@ -127,3 +127,53 @@ export {
   type DiseaseData,
   type HealthMarketEdge,
 } from './health-trackers.js';
+
+// ESPN Sports Odds (no API key required)
+export {
+  fetchSportsOddsESPN,
+  fetchAllSportsOddsESPN,
+  findESPNEdge,
+  oddsToProb,
+  spreadToWinProb,
+  detectSharpMoney,
+  type ESPNOdds,
+  type ESPNGame,
+  type ConsensusData,
+  type SharpSquareSignal,
+} from './espn-odds.js';
+
+// CDC Health Surveillance (wastewater, flu)
+export {
+  fetchWastewaterData,
+  fetchAllHealthSurveillance,
+  analyzeWastewaterEdge,
+  analyzeFluEdge,
+  type WastewaterData,
+  type FluData as CDCFluData,
+  type HealthEdgeSignal,
+} from './cdc-surveillance.js';
+
+// Crypto Funding Rates & Sentiment
+export {
+  fetchFundingRates,
+  fetchFearGreedIndex,
+  fetchAllCryptoSentiment,
+  analyzeFundingEdge,
+  analyzeFearGreedEdge,
+  type FundingRate,
+  type FundingAggregate,
+  type FearGreedIndex,
+  type CryptoEdgeSignal,
+} from './crypto-funding.js';
+
+// Fed Nowcasts (GDPNow, Inflation)
+export {
+  fetchGDPNow,
+  fetchInflationNowcast,
+  fetchAllNowcasts,
+  analyzeGDPEdge,
+  analyzeInflationEdge,
+  type GDPNowcast,
+  type InflationNowcast,
+  type EconomicEdgeSignal,
+} from './fed-nowcasts.js';
