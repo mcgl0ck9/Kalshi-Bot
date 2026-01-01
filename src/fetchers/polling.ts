@@ -15,6 +15,17 @@ import { logger } from '../utils/index.js';
 import { fetchWithFallback, createSource, type FetchResult } from '../utils/resilient-fetch.js';
 
 // =============================================================================
+// HELPERS
+// =============================================================================
+
+/**
+ * Sort candidates by percentage descending and return as array
+ */
+function getSortedCandidates(candidates: Record<string, number>): [string, number][] {
+  return Object.entries(candidates).sort((a, b) => b[1] - a[1]);
+}
+
+// =============================================================================
 // TYPES
 // =============================================================================
 
@@ -215,7 +226,7 @@ async function fetch538Data(): Promise<Partial<PollingData> | null> {
           candidates[entry.candidate] = entry.pct_estimate;
         }
 
-        const sorted = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
+        const sorted = getSortedCandidates(candidates);
         const leader = sorted[0]?.[0] ?? '';
         const spread = sorted.length >= 2 ? sorted[0][1] - sorted[1][1] : 0;
 
@@ -367,7 +378,7 @@ async function fetchSilverBulletinData(): Promise<Partial<PollingData> | null> {
         candidates[other] = 100 - prob;
       }
 
-      const sorted = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
+      const sorted = getSortedCandidates(candidates);
 
       forecasts.push({
         race: 'President 2024',
@@ -440,7 +451,7 @@ async function fetchEconomistData(): Promise<Partial<PollingData> | null> {
     }
 
     if (Object.keys(candidates).length >= 2) {
-      const sorted = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
+      const sorted = getSortedCandidates(candidates);
 
       forecasts.push({
         race: 'President 2024',
