@@ -100,6 +100,7 @@ export interface PipelineResult {
     recencyBiasSignals: number;
     whaleConvictionSignals: number;
     macroEdgeSignals: number;
+    optionsImpliedSignals: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -139,6 +140,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     recencyBiasSignals: 0,
     whaleConvictionSignals: 0,
     macroEdgeSignals: 0,
+    optionsImpliedSignals: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -726,6 +728,163 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Macro economic edge detection failed: ${error}`);
+    }
+
+    // 6.5.13: Options-Implied Edge Detection (Fed Funds, SPX, Treasury)
+    logger.info('  Checking options-implied edges...');
+    try {
+      const { fetchAllOptionsImplied, findOptionsEdge } = await import('./fetchers/options-implied.js');
+
+      // Fetch options-implied data
+      const optionsData = await fetchAllOptionsImplied();
+
+      let optionsEdgesFound = 0;
+
+      // Match Fed rate markets to Fed Funds implied
+      if (optionsData.fedFunds) {
+        const fedMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return (title.includes('fed') || title.includes('fomc') || title.includes('rate')) &&
+                 (title.includes('cut') || title.includes('hike') || title.includes('hold'));
+        });
+
+        for (const market of fedMarkets) {
+          const title = market.title?.toLowerCase() ?? '';
+          let impliedProb: number | null = null;
+          let marketType = '';
+
+          if (title.includes('cut')) {
+            impliedProb = optionsData.fedFunds.probCut25 + optionsData.fedFunds.probCut50;
+            marketType = 'Fed cut';
+          } else if (title.includes('hike') || title.includes('raise')) {
+            impliedProb = optionsData.fedFunds.probHike25 + optionsData.fedFunds.probHike50;
+            marketType = 'Fed hike';
+          } else if (title.includes('hold') || title.includes('unchanged')) {
+            impliedProb = optionsData.fedFunds.probHold;
+            marketType = 'Fed hold';
+          }
+
+          if (impliedProb !== null) {
+            const edgeResult = findOptionsEdge(market.price, impliedProb, optionsData.fedFunds.source);
+            if (edgeResult && Math.abs(edgeResult.edge) >= 0.03) {
+              optionsEdgesFound++;
+              const opp: EdgeOpportunity = {
+                market,
+                source: 'options',
+                edge: Math.abs(edgeResult.edge),
+                confidence: edgeResult.confidence,
+                urgency: Math.abs(edgeResult.edge) > 0.10 ? 'critical' : Math.abs(edgeResult.edge) > 0.05 ? 'standard' : 'fyi',
+                direction: edgeResult.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+                signals: {
+                  optionsImplied: {
+                    source: optionsData.fedFunds.source,
+                    impliedProb,
+                    marketPrice: market.price,
+                    dataType: 'fed',
+                    reasoning: `${marketType}: Options imply ${(impliedProb * 100).toFixed(0)}% vs market ${(market.price * 100).toFixed(0)}%`,
+                  },
+                },
+              };
+              opp.sizing = calculateAdaptivePosition(bankroll, opp);
+              opportunities.push(opp);
+            }
+          }
+        }
+      }
+
+      // Match recession markets to Treasury curve
+      if (optionsData.treasury) {
+        const recessionMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('recession');
+        });
+
+        for (const market of recessionMarkets) {
+          const impliedProb = optionsData.treasury.recessionProb12m;
+          const edgeResult = findOptionsEdge(market.price, impliedProb, 'treasury');
+
+          if (edgeResult && Math.abs(edgeResult.edge) >= 0.03) {
+            optionsEdgesFound++;
+            const opp: EdgeOpportunity = {
+              market,
+              source: 'options',
+              edge: Math.abs(edgeResult.edge),
+              confidence: edgeResult.confidence,
+              urgency: Math.abs(edgeResult.edge) > 0.10 ? 'critical' : Math.abs(edgeResult.edge) > 0.05 ? 'standard' : 'fyi',
+              direction: edgeResult.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+              signals: {
+                optionsImplied: {
+                  source: 'treasury_curve',
+                  impliedProb,
+                  marketPrice: market.price,
+                  dataType: 'recession',
+                  reasoning: `Yield curve implies ${(impliedProb * 100).toFixed(0)}% recession prob vs market ${(market.price * 100).toFixed(0)}%`,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      }
+
+      // Match SPX level markets to options implied
+      if (optionsData.spx) {
+        const spxMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('s&p') || title.includes('sp500') || title.includes('spx') ||
+                 (title.includes('stock') && title.includes('market'));
+        });
+
+        for (const market of spxMarkets) {
+          const title = market.title?.toLowerCase() ?? '';
+
+          // Check for "down X%" or "crash" markets
+          let impliedProb: number | null = null;
+          let marketType = '';
+
+          if (title.includes('down 10') || title.includes('drop 10') || title.includes('fall 10')) {
+            impliedProb = optionsData.spx.probDown10;
+            marketType = 'SPX down 10%';
+          } else if (title.includes('down 20') || title.includes('drop 20') || title.includes('crash')) {
+            impliedProb = optionsData.spx.probDown20;
+            marketType = 'SPX down 20%';
+          }
+
+          if (impliedProb !== null) {
+            const edgeResult = findOptionsEdge(market.price, impliedProb, 'spx');
+            if (edgeResult && Math.abs(edgeResult.edge) >= 0.02) {
+              optionsEdgesFound++;
+              const opp: EdgeOpportunity = {
+                market,
+                source: 'options',
+                edge: Math.abs(edgeResult.edge),
+                confidence: edgeResult.confidence,
+                urgency: Math.abs(edgeResult.edge) > 0.10 ? 'critical' : Math.abs(edgeResult.edge) > 0.05 ? 'standard' : 'fyi',
+                direction: edgeResult.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+                signals: {
+                  optionsImplied: {
+                    source: 'spx_options',
+                    impliedProb,
+                    marketPrice: market.price,
+                    dataType: 'spx',
+                    reasoning: `${marketType}: VIX implies ${(impliedProb * 100).toFixed(1)}% prob vs market ${(market.price * 100).toFixed(0)}%`,
+                  },
+                },
+              };
+              opp.sizing = calculateAdaptivePosition(bankroll, opp);
+              opportunities.push(opp);
+            }
+          }
+        }
+      }
+
+      stats.optionsImpliedSignals = optionsEdgesFound;
+      if (optionsEdgesFound > 0) {
+        logger.success(`  ${optionsEdgesFound} options-implied edges found`);
+      }
+    } catch (error) {
+      logger.warn(`  Options-implied edge detection failed: ${error}`);
     }
 
     // ========== STEP 7: COMBINE SIGNALS ==========

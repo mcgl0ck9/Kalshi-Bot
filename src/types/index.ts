@@ -75,7 +75,7 @@ export interface SentimentEdge {
 
 export interface EdgeOpportunity {
   market: Market;
-  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro';
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro' | 'options';
   edge: number;
   confidence: number;
   urgency: 'critical' | 'standard' | 'fyi';
@@ -125,6 +125,14 @@ export interface EdgeOpportunity {
       indicatorValue: number;
       indicatorSource: string;
       impliedProbability: number;
+      reasoning: string;
+    };
+    // Options-implied probability edge (Fed Funds, SPX, Treasury)
+    optionsImplied?: {
+      source: string;
+      impliedProb: number;
+      marketPrice: number;
+      dataType: 'fed' | 'spx' | 'recession';
       reasoning: string;
     };
   };
