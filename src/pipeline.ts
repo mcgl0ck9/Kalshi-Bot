@@ -102,6 +102,7 @@ export interface PipelineResult {
     macroEdgeSignals: number;
     optionsImpliedSignals: number;
     enhancedSportsEdges: number;
+    newMarketsDetected: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -143,6 +144,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     macroEdgeSignals: 0,
     optionsImpliedSignals: 0,
     enhancedSportsEdges: 0,
+    newMarketsDetected: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -954,6 +956,78 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       logger.warn(`  Options-implied edge detection failed: ${error}`);
     }
 
+    // 6.5.14: New Market Scanner (early mover advantage on fresh markets)
+    logger.info('  Scanning for new markets...');
+    try {
+      const { scanNewMarkets } = await import('./edge/new-market-scanner.js');
+      const scanResult = await scanNewMarkets();
+
+      // Count all markets with high or medium early mover advantage
+      const actionableNewMarkets = [
+        ...scanResult.newMarkets.filter(m => m.earlyMoverAdvantage !== 'low'),
+        ...scanResult.recentMarkets.filter(m => m.earlyMoverAdvantage === 'high'),
+      ];
+
+      stats.newMarketsDetected = actionableNewMarkets.length;
+
+      if (actionableNewMarkets.length > 0) {
+        logger.success(`  ${actionableNewMarkets.length} new markets with early mover advantage`);
+
+        // Convert to opportunities (top 5 with best advantage)
+        for (const newMarket of actionableNewMarkets.slice(0, 5)) {
+          // Determine edge - use potential edge from similar markets or a baseline
+          const edge = newMarket.potentialEdge ?? (newMarket.earlyMoverAdvantage === 'high' ? 0.08 : 0.05);
+
+          // Skip if edge is too small
+          if (edge < 0.03) continue;
+
+          // Determine direction based on external reference or similar markets
+          // Default to BUY YES if we have an external reference suggesting underpricing
+          let direction: 'BUY YES' | 'BUY NO' = 'BUY YES';
+          if (newMarket.similarMarkets && newMarket.similarMarkets.length > 0) {
+            const avgSimilarPrice = newMarket.similarMarkets.reduce((s, m) => s + m.price, 0) / newMarket.similarMarkets.length;
+            direction = avgSimilarPrice > newMarket.market.price ? 'BUY YES' : 'BUY NO';
+          }
+
+          const opp: EdgeOpportunity = {
+            market: {
+              platform: newMarket.market.platform,
+              id: newMarket.market.id,
+              title: newMarket.market.title,
+              category: (newMarket.market.category || 'other') as Market['category'],
+              price: newMarket.market.price,
+              volume: newMarket.market.volume,
+              url: newMarket.market.url,
+            },
+            source: 'new-market',
+            edge,
+            confidence: newMarket.earlyMoverAdvantage === 'high' ? 0.6 : 0.5,
+            urgency: newMarket.earlyMoverAdvantage === 'high' ? 'critical' : 'standard',
+            direction,
+            signals: {
+              newMarket: {
+                ageMinutes: newMarket.ageMinutes,
+                earlyMoverAdvantage: newMarket.earlyMoverAdvantage,
+                potentialEdge: newMarket.potentialEdge,
+                liquidityTrend: newMarket.liquidityTrend,
+                hasExternalReference: newMarket.hasExternalReference,
+                similarMarkets: newMarket.similarMarkets?.length,
+              },
+            },
+          };
+
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+
+          // Log for visibility
+          const emoji = newMarket.earlyMoverAdvantage === 'high' ? '🚀' : '⚡';
+          logger.info(`    ${emoji} ${newMarket.market.title.slice(0, 40)}... (${newMarket.ageMinutes}min old)`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  New market scanner failed: ${error}`);
+    }
+
     // ========== STEP 7: COMBINE SIGNALS ==========
     logger.step(7, 'Combining signals for final opportunities...');
 
@@ -1135,6 +1209,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
           if (opp.signals.macroEdge) signalSources.push('macro');
           if (opp.signals.optionsImplied) signalSources.push('options');
           if (opp.signals.enhancedSports) signalSources.push('enhanced-sports');
+          if (opp.signals.newMarket) signalSources.push('new-market');
           if (signalSources.length === 0) signalSources.push(opp.source);
 
           // Calculate our implied estimate based on direction and edge

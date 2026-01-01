@@ -75,7 +75,7 @@ export interface SentimentEdge {
 
 export interface EdgeOpportunity {
   market: Market;
-  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro' | 'options' | 'sports';
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro' | 'options' | 'sports' | 'new-market';
   edge: number;
   confidence: number;
   urgency: 'critical' | 'standard' | 'fyi';
@@ -146,6 +146,15 @@ export interface EdgeOpportunity {
       weatherImpact?: number;
       signals: string[];
       primaryReason: string;
+    };
+    // New market early mover advantage
+    newMarket?: {
+      ageMinutes: number;
+      earlyMoverAdvantage: 'high' | 'medium' | 'low';
+      potentialEdge?: number;
+      liquidityTrend: string;
+      hasExternalReference: boolean;
+      similarMarkets?: number;
     };
   };
   sizing?: PositionSizing;
