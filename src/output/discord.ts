@@ -135,9 +135,18 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     lines.push(signals.macroEdge.reasoning);
   } else if (signals.optionsImplied) {
     lines.push(signals.optionsImplied.reasoning);
+  } else if (signals.whaleConviction) {
+    const wc = signals.whaleConviction;
+    lines.push(`Polymarket whales betting ${(wc.whaleImpliedPrice * 100).toFixed(0)}¢ vs Kalshi ${(wc.polymarketPrice * 100).toFixed(0)}¢`);
+    lines.push(`${wc.topWhaleCount} top traders with ${(wc.convictionStrength * 100).toFixed(0)}% conviction`);
+    lines.push(`Smart money sees value here`);
   } else if (signals.newMarket) {
-    lines.push(`New market (${signals.newMarket.ageMinutes} min old)`);
-    lines.push(`Advantage: ${signals.newMarket.earlyMoverAdvantage}`);
+    const nm = signals.newMarket;
+    lines.push(`Fresh market (${nm.ageMinutes} min old) - early mover advantage`);
+    if (nm.potentialEdge && nm.potentialEdge > 0.03) {
+      lines.push(`Potential edge: +${(nm.potentialEdge * 100).toFixed(1)}%`);
+    }
+    lines.push(`Liquidity trend: ${nm.liquidityTrend}`);
   } else if (signals.recencyBias) {
     lines.push(`Market overreacted to recent news`);
     lines.push(`Price will likely revert toward base rate`);

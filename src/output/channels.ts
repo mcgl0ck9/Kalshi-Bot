@@ -116,11 +116,14 @@ export function routeOpportunity(opportunity: EdgeOpportunity): DiscordChannel {
       return 'economics';
 
     case 'new-market':
-      // Route new markets by their category
-      return categoryToChannel(market.category);
+      // New markets go to digest for visibility
+      return 'digest';
+
+    case 'whale':
+      // Whale signals go to economics (most whale bets are macro/politics)
+      return 'economics';
 
     case 'sentiment':
-    case 'whale':
     case 'cross-platform':
     case 'combined':
     default:
@@ -128,6 +131,14 @@ export function routeOpportunity(opportunity: EdgeOpportunity): DiscordChannel {
   }
 
   // Check for specific signal types
+  if (signals.whaleConviction) {
+    // Whale conviction signals go to economics
+    return 'economics';
+  }
+  if (signals.newMarket) {
+    // New market signals go to digest
+    return 'digest';
+  }
   if (signals.fedSpeech) {
     return 'mentions';
   }
@@ -255,9 +266,21 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
     lines.push(`${signals.macroEdge.indicatorName}: ${signals.macroEdge.reasoning}`);
   } else if (signals.optionsImplied) {
     lines.push(`${signals.optionsImplied.reasoning}`);
+  } else if (signals.whaleConviction) {
+    const wc = signals.whaleConviction;
+    lines.push(`Polymarket whales betting ${(wc.whaleImpliedPrice * 100).toFixed(0)}¢ vs Kalshi ${(wc.polymarketPrice * 100).toFixed(0)}¢`);
+    lines.push(`${wc.topWhaleCount} top traders with ${(wc.convictionStrength * 100).toFixed(0)}% conviction`);
+    lines.push(`Smart money sees value here`);
   } else if (signals.newMarket) {
-    lines.push(`New market (${signals.newMarket.ageMinutes} min old)`);
-    lines.push(`Early mover advantage: ${signals.newMarket.earlyMoverAdvantage}`);
+    const nm = signals.newMarket;
+    lines.push(`Fresh market (${nm.ageMinutes} min old) - early mover advantage`);
+    if (nm.potentialEdge && nm.potentialEdge > 0.03) {
+      lines.push(`Potential edge: +${(nm.potentialEdge * 100).toFixed(1)}%`);
+    }
+    lines.push(`Liquidity trend: ${nm.liquidityTrend}`);
+    if (nm.hasExternalReference) {
+      lines.push(`Has external data sources for validation`);
+    }
   } else if (signals.recencyBias) {
     lines.push(`Market overreacted to recent news`);
     lines.push(`Price will likely revert toward base rate`);
