@@ -96,25 +96,27 @@ export function analyzeWhaleText(
 // =============================================================================
 
 /**
- * Check for whale activity signals
+ * Check for whale activity signals via social media
  *
- * Note: In production, this would scrape or use APIs to get real data.
- * For now, returns empty array - implement real data source integration.
+ * NOTE: This is a legacy placeholder. Real whale tracking now happens via:
+ * - Polymarket on-chain data in cross-platform-conviction.ts (working!)
+ * - Goldsky subgraph queries for position data
+ *
+ * Twitter/social tracking is disabled due to API access limitations.
+ * The on-chain approach is more reliable anyway since it tracks actual
+ * positions, not just what whales say publicly.
  */
 export async function checkWhaleActivity(): Promise<WhaleSignal[]> {
-  logger.info('Checking whale activity...');
+  // Social media whale tracking is disabled.
+  // Real whale tracking happens via Polymarket on-chain data in:
+  // - src/fetchers/polymarket-onchain.ts (position queries)
+  // - src/edge/cross-platform-conviction.ts (edge detection)
+  //
+  // This function is kept for backwards compatibility but returns empty.
+  // See step 6.5.6 in pipeline.ts for the working whale conviction signals.
 
-  // TODO: Implement real whale tracking via:
-  // 1. Nitter/Twitter scraping (unreliable)
-  // 2. Polymarket on-chain data (requires blockchain indexing)
-  // 3. Public API endpoints if available
-
-  const signals: WhaleSignal[] = [];
-
-  // Placeholder - in real implementation, fetch actual whale activity
-  logger.info(`Found ${signals.length} whale activity signals`);
-
-  return signals;
+  logger.debug('Social whale tracking disabled (using on-chain data instead)');
+  return [];
 }
 
 // =============================================================================

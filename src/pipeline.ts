@@ -189,13 +189,15 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 
     logger.success(`${articles.length} news articles`);
 
-    // ========== STEP 3: CHECK WHALE ACTIVITY ==========
-    logger.step(3, 'Checking whale activity...');
+    // ========== STEP 3: CHECK WHALE ACTIVITY (Legacy - see step 6.5.6 for on-chain) ==========
+    logger.step(3, 'Checking social whale activity...');
 
+    // Note: Social media whale tracking is disabled.
+    // Real whale tracking via on-chain Polymarket data happens in step 6.5.6.
     const whales = await checkWhaleActivity();
     whaleSignals.push(...whales);
 
-    logger.success(`${whales.length} whale signals`);
+    logger.success(`Social whale signals: ${whales.length} (on-chain in step 6.5.6)`);
 
     // ========== STEP 4: CROSS-PLATFORM DIVERGENCE ==========
     logger.step(4, 'Finding cross-platform divergences...');
