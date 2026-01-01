@@ -75,7 +75,7 @@ export interface SentimentEdge {
 
 export interface EdgeOpportunity {
   market: Market;
-  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings';
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings' | 'macro';
   edge: number;
   confidence: number;
   urgency: 'critical' | 'standard' | 'fyi';
@@ -115,6 +115,15 @@ export interface EdgeOpportunity {
     earnings?: {
       company: string;
       keyword: string;
+      impliedProbability: number;
+      reasoning: string;
+    };
+    // Macro economic edge analysis (CPI, Jobs, GDP)
+    macroEdge?: {
+      indicatorType: string;
+      indicatorName: string;
+      indicatorValue: number;
+      indicatorSource: string;
       impliedProbability: number;
       reasoning: string;
     };

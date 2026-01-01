@@ -98,7 +98,8 @@ export interface PipelineResult {
     sportsEdgesFound: number;
     weatherSignals: number;
     recencyBiasSignals: number;
-  whaleConvictionSignals: number;
+    whaleConvictionSignals: number;
+    macroEdgeSignals: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -137,6 +138,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     cityWeatherSignals: 0,
     recencyBiasSignals: 0,
     whaleConvictionSignals: 0,
+    macroEdgeSignals: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -656,6 +658,74 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Earnings call edge detection failed: ${error}`);
+    }
+
+    // 6.5.12: Macro Economic Edge Detection (CPI, Jobs, GDP nowcasts)
+    logger.info('  Checking macro economic edges...');
+    try {
+      const { analyzeMacroEdge } = await import('./edge/macro-edge.js');
+      const { fetchAllEconomicData } = await import('./fetchers/economic/index.js');
+
+      // Fetch economic data (CPI nowcast, Jobs leading indicators, GDP nowcast)
+      const economicData = await fetchAllEconomicData();
+
+      // Also fetch FedWatch for Fed rate edge detection
+      const fedWatchForMacro = await fetchFedWatch();
+
+      // Run macro edge analysis
+      const macroEdgeReport = analyzeMacroEdge(kalshiMarkets, {
+        fedWatch: fedWatchForMacro,
+        inflation: economicData.inflation,
+        jobs: economicData.jobs,
+        gdp: economicData.gdp,
+      });
+
+      stats.macroEdgeSignals = macroEdgeReport.signals.length;
+
+      if (macroEdgeReport.signals.length > 0) {
+        logger.success(`  ${macroEdgeReport.signals.length} macro economic edges found`);
+        logger.info(`    Fed: ${macroEdgeReport.byCategory.fed.length}, CPI: ${macroEdgeReport.byCategory.cpi.length}, Jobs: ${macroEdgeReport.byCategory.jobs.length}, GDP: ${macroEdgeReport.byCategory.gdp.length}`);
+
+        // Convert to opportunities
+        for (const signal of macroEdgeReport.signals.slice(0, 5)) {
+          // Find the original market object for full properties
+          const originalMarket = kalshiMarkets.find(m => m.id === signal.marketId);
+
+          const opp: EdgeOpportunity = {
+            market: originalMarket ?? {
+              platform: signal.marketPlatform,
+              id: signal.marketId,
+              title: signal.marketTitle,
+              category: 'macro',
+              price: signal.marketPrice,
+              volume: 0,
+              url: signal.marketUrl ?? '',
+            },
+            source: 'macro',
+            edge: Math.abs(signal.edge),
+            confidence: signal.confidence,
+            urgency: signal.signalStrength === 'strong' ? 'critical' : signal.signalStrength === 'moderate' ? 'standard' : 'fyi',
+            direction: signal.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {
+              macroEdge: {
+                indicatorType: signal.indicatorType,
+                indicatorName: signal.indicatorName,
+                indicatorValue: signal.indicatorValue,
+                indicatorSource: signal.indicatorSource,
+                impliedProbability: signal.impliedProbability,
+                reasoning: signal.reasoning,
+              },
+            },
+          };
+          opp.sizing = calculateAdaptivePosition(bankroll, opp);
+          opportunities.push(opp);
+
+          // Also add to macroSignals for the macro channel
+          macroSignals.push(signal);
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Macro economic edge detection failed: ${error}`);
     }
 
     // ========== STEP 7: COMBINE SIGNALS ==========
