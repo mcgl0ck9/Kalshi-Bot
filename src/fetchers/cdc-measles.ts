@@ -100,24 +100,54 @@ export async function fetchMeaslesCases(): Promise<MeaslesData | null> {
 
   // Try to fetch from CDC page
   let casesYTD: number | null = null;
+  let dataYear: number = currentYear;
   let source = 'cached';
 
   try {
-    casesYTD = await scrapeCDCMeaslesPage();
-    if (casesYTD !== null) {
-      source = 'cdc_page';
-      logger.info(`Fetched ${casesYTD} measles cases from CDC page`);
+    const cdcResult = await scrapeCDCMeaslesPage();
+    if (cdcResult !== null) {
+      // Check if CDC data is for current year or previous year
+      if (cdcResult.year === currentYear) {
+        casesYTD = cdcResult.count;
+        source = 'cdc_page';
+        logger.info(`Fetched ${casesYTD} measles cases from CDC page (${currentYear} data)`);
+      } else if (cdcResult.year === currentYear - 1) {
+        // CDC still showing last year's data (common in early January)
+        // Update historical data and use 0 for current year
+        HISTORICAL_CASES[cdcResult.year] = cdcResult.count;
+        logger.info(`CDC showing ${cdcResult.year} data (${cdcResult.count} cases). ${currentYear} has just started.`);
+
+        // For current year, estimate based on week number and historical patterns
+        if (currentWeek <= 1) {
+          // Year just started - very few cases expected
+          casesYTD = 0;
+          source = 'year_start';
+        } else {
+          // Early in year - use seasonal projection backwards
+          const avgWeeklyEarly = HISTORICAL_CASES[cdcResult.year] / 52 * 0.5; // Early weeks are typically 50% of average
+          casesYTD = Math.round(avgWeeklyEarly * currentWeek);
+          source = 'estimated';
+        }
+      } else {
+        logger.warn(`CDC data year ${cdcResult.year} doesn't match current year ${currentYear}`);
+        casesYTD = null;
+      }
     }
   } catch (error) {
     logger.debug(`CDC scrape failed: ${error}`);
   }
 
-  // Fallback to recent known value
+  // Fallback to cached/estimated value
   if (casesYTD === null) {
-    // Use a recent known value (update this periodically)
-    // As of late December 2025, there were ~2000+ cases
-    casesYTD = HISTORICAL_CASES[currentYear] ?? 2000;
-    logger.debug(`Using cached measles count: ${casesYTD}`);
+    if (currentWeek <= 2) {
+      // Very early in year - minimal cases expected
+      casesYTD = currentWeek * 20; // ~20 cases per week early in year
+      source = 'early_year_estimate';
+    } else {
+      casesYTD = HISTORICAL_CASES[currentYear] ?? Math.round(calculateHistoricalAverage(5) * currentWeek / 52);
+      source = 'cached';
+    }
+    logger.debug(`Using estimated measles count: ${casesYTD} (${source})`);
   }
 
   // Calculate projections
@@ -140,8 +170,9 @@ export async function fetchMeaslesCases(): Promise<MeaslesData | null> {
 
 /**
  * Scrape CDC measles page for current case count
+ * Returns { count, year } or null if parsing fails
  */
-async function scrapeCDCMeaslesPage(): Promise<number | null> {
+async function scrapeCDCMeaslesPage(): Promise<{ count: number; year: number } | null> {
   try {
     const response = await fetch('https://www.cdc.gov/measles/data-research/index.html', {
       headers: {
@@ -155,6 +186,11 @@ async function scrapeCDCMeaslesPage(): Promise<number | null> {
     }
 
     const html = await response.text();
+
+    // Extract the year from "Measles cases in 202X" heading
+    // This is critical to avoid treating last year's data as current year
+    const yearMatch = html.match(/[Mm]easles\s+cases\s+in\s+(20\d{2})/);
+    const dataYear = yearMatch ? parseInt(yearMatch[1], 10) : null;
 
     // Look for patterns like "X,XXX cases" or "XXXX measles cases"
     // CDC typically shows: "As of [date], X,XXX measles cases have been reported"
@@ -171,7 +207,10 @@ async function scrapeCDCMeaslesPage(): Promise<number | null> {
         const countStr = match[1].replace(/,/g, '');
         const count = parseInt(countStr, 10);
         if (count > 0 && count < 100000) {  // Sanity check
-          return count;
+          return {
+            count,
+            year: dataYear ?? new Date().getFullYear(),
+          };
         }
       }
     }
@@ -270,12 +309,15 @@ function calculateHistoricalAverage(years: number): number {
 /**
  * Calculate probability of exceeding a threshold
  * Uses log-normal distribution (case counts are right-skewed)
+ *
+ * Key insight: Early in the year, we should rely more on historical data
+ * and less on the current (near-zero) YTD count.
  */
 export function calculateExceedanceProbability(
   data: MeaslesData,
   threshold: number
 ): MeaslesThreshold {
-  const { casesYTD, projectedYearEnd, projectionConfidence, weekNumber } = data;
+  const { casesYTD, projectedYearEnd, projectionConfidence, weekNumber, lastYearTotal, historicalAverage } = data;
 
   // If we've already exceeded the threshold, probability is 1
   if (casesYTD >= threshold) {
@@ -283,6 +325,42 @@ export function calculateExceedanceProbability(
       threshold,
       probability: 1.0,
       confidence: 0.99,
+    };
+  }
+
+  // CRITICAL: Early in year, use historical data not current YTD
+  // Week 1-8: Heavy reliance on history (last year had 2000+ cases!)
+  if (weekNumber <= 8) {
+    // Use log-normal distribution based on historical data
+    const baselineEstimate = Math.max(lastYearTotal, historicalAverage);
+    const stdDev = baselineEstimate * 0.8; // High variance for measles
+
+    // Log-normal parameters
+    const logMean = Math.log(baselineEstimate);
+    const logStd = Math.log(1 + (stdDev / baselineEstimate) ** 2) ** 0.5;
+
+    // Probability of exceeding threshold under historical distribution
+    const logThreshold = Math.log(threshold);
+    const z = (logThreshold - logMean) / logStd;
+    const histProb = 1 - normalCDF(z);
+
+    // Blend with YTD projection as weeks progress
+    const ytdWeight = weekNumber / 16; // Full weight by week 16
+    const histWeight = 1 - ytdWeight;
+
+    // Calculate YTD-based probability (will be low early in year)
+    let ytdProb = 0.01;
+    if (projectedYearEnd > 0) {
+      const ytdZ = (threshold - projectedYearEnd) / Math.max(baselineEstimate * 0.5, 100);
+      ytdProb = 1 - normalCDF(ytdZ);
+    }
+
+    const blendedProb = histWeight * histProb + ytdWeight * ytdProb;
+
+    return {
+      threshold,
+      probability: Math.max(0.01, Math.min(0.99, blendedProb)),
+      confidence: projectionConfidence * 0.5, // Low confidence early in year
     };
   }
 

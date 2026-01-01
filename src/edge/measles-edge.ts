@@ -189,6 +189,20 @@ function analyzeMeaslesMarket(
     return null;
   }
 
+  // CRITICAL: Require minimum confidence for large edges
+  // Early in year (weeks 1-8), projections are unreliable
+  // Don't generate 50%+ edge signals with <30% confidence
+  if (absEdge > 0.50 && data.projectionConfidence < 0.30) {
+    logger.debug(`Skipping ${ticker}: ${(absEdge * 100).toFixed(0)}% edge but only ${(data.projectionConfidence * 100).toFixed(0)}% confidence (week ${data.weekNumber})`);
+    return null;
+  }
+
+  // For large edges (>30%), require at least 40% confidence
+  if (absEdge > 0.30 && data.projectionConfidence < 0.40) {
+    logger.debug(`Skipping ${ticker}: ${(absEdge * 100).toFixed(0)}% edge but only ${(data.projectionConfidence * 100).toFixed(0)}% confidence`);
+    return null;
+  }
+
   // Determine direction and signal strength
   const direction: 'buy_yes' | 'buy_no' = edge > 0 ? 'buy_yes' : 'buy_no';
 
