@@ -309,6 +309,7 @@ For segmented alerts, configure separate webhooks:
 - [ ] Integrate Twitter/X sentiment for real-time signals
 - [ ] Add backtesting framework for strategy validation
 - [ ] Implement paper trading mode
+- [ ] Bowl game opt-out & transfer portal tracker (Covers.com, ESPN sources)
 
 ### Medium-term
 - [ ] Machine learning model for edge prediction
