@@ -71,6 +71,13 @@ import {
   sendToChannel,
 } from './output/channels.js';
 
+// ML scoring
+import {
+  enhanceOpportunities,
+  getModelStatus,
+  type ScoredOpportunity,
+} from './ml/index.js';
+
 // =============================================================================
 // PIPELINE RESULT
 // =============================================================================
@@ -710,7 +717,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     }
 
-    // Sort by edge magnitude and urgency
+    // Sort by edge magnitude and urgency (basic sort before ML)
     opportunities.sort((a, b) => {
       if (a.urgency !== b.urgency) {
         const urgencyOrder = { critical: 0, standard: 1, fyi: 2 };
@@ -723,11 +730,37 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 
     logger.success(`${opportunities.length} total opportunities`);
 
+    // ========== STEP 7.5: ML SCORING ==========
+    logger.step(7.5, 'Applying ML scoring...');
+
+    const modelStatus = getModelStatus();
+    let scoredOpportunities: ScoredOpportunity[] = [];
+
+    if (modelStatus.available) {
+      logger.info(`Using ML model v${modelStatus.version} (${modelStatus.trainingSamples} samples, ${(modelStatus.accuracy * 100).toFixed(0)}% acc)`);
+      scoredOpportunities = enhanceOpportunities(opportunities, 20);
+
+      // Log top ML-ranked opportunities
+      for (const opp of scoredOpportunities.slice(0, 3)) {
+        logger.info(`  ML: ${opp.market.title.slice(0, 40)}... score=${(opp.mlScore * 100).toFixed(0)}%`);
+      }
+    } else {
+      logger.info('No ML model available, using raw ranking');
+      // Convert to ScoredOpportunity format without ML scoring
+      scoredOpportunities = opportunities.slice(0, 20).map(opp => ({
+        ...opp,
+        mlScore: 0.5,
+        adjustedConfidence: opp.confidence,
+        expectedValue: opp.edge * opp.confidence,
+        rankScore: opp.edge * opp.confidence,
+      }));
+    }
+
     // ========== STEP 8: SEND ALERTS ==========
     logger.step(8, 'Sending alerts...');
 
-    // Send top 5 opportunities to appropriate channels
-    for (const opp of opportunities.slice(0, 5)) {
+    // Send top 5 ML-ranked opportunities to appropriate channels
+    for (const opp of scoredOpportunities.slice(0, 5)) {
       try {
         await sendEdgeAlert(opp);
         stats.alertsSent++;
