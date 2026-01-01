@@ -32,6 +32,7 @@ import { fetchKalshiMarkets, fetchPolymarketMarkets, fetchKalshiSportsMarkets, f
 // Fetchers
 import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges } from './fetchers/index.js';
 import { fetchFedWatch } from './fetchers/economic/fed-watch.js';
+import { fetchPolymarketMarketsWithPrices } from './fetchers/polymarket-onchain.js';
 
 // Analysis
 import {
@@ -148,7 +149,8 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     const [kalshiGeneral, kalshiSports, polyMarkets] = await Promise.all([
       fetchAllKalshiMarkets(1000).catch(() => [] as Market[]),
       fetchKalshiSportsMarkets().catch(() => [] as Market[]),
-      fetchPolymarketMarkets(100),
+      // Use Gamma API for reliable Polymarket prices (dr-manhattan returns 0 prices)
+      fetchPolymarketMarketsWithPrices(200),
     ]);
 
     polymarketMarkets = polyMarkets;
@@ -574,6 +576,41 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       logger.warn(`  Fed speech keyword detection failed: ${error}`);
     }
 
+    // 6.5.10: CDC Measles Edge Detection
+    logger.info('  Checking CDC measles edges...');
+    try {
+      const { detectMeaslesEdges, formatMeaslesEdge } = await import('./edge/measles-edge.js');
+      const measlesEdges = await detectMeaslesEdges();
+
+      if (measlesEdges.length > 0) {
+        logger.success(`  ${measlesEdges.length} measles edges found`);
+
+        for (const edge of measlesEdges.slice(0, 5)) {
+          logger.info(`    🦠 ${edge.ticker}: ${edge.direction} (${(edge.edge * 100).toFixed(1)}% edge)`);
+
+          // Add to opportunities
+          opportunities.push({
+            market: edge.market,
+            source: 'measles',
+            edge: Math.abs(edge.edge),
+            confidence: edge.confidence,
+            urgency: edge.signalStrength === 'critical' ? 'critical' :
+                     edge.signalStrength === 'actionable' ? 'standard' : 'fyi',
+            direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {
+              measles: {
+                currentCases: edge.currentCases,
+                threshold: edge.threshold,
+                projectedYearEnd: edge.projectedYearEnd,
+              },
+            },
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn(`  CDC measles edge detection failed: ${error}`);
+    }
+
     // ========== STEP 7: COMBINE SIGNALS ==========
     logger.step(7, 'Combining signals for final opportunities...');
 
@@ -724,7 +761,7 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 export async function getDivergencesReport(): Promise<string> {
   const [kalshi, poly] = await Promise.all([
     fetchKalshiMarkets(100),
-    fetchPolymarketMarkets(100),
+    fetchPolymarketMarketsWithPrices(200),
   ]);
 
   const matches = matchMarketsCrossPlatform(kalshi, poly);

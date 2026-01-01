@@ -250,8 +250,8 @@ export function findRegimeAdjustedFedEdge(
   const adjustedEdge = adjustedProb - market.price;
   const absAdjustedEdge = Math.abs(adjustedEdge);
 
-  // Only signal if adjusted edge is significant
-  if (absAdjustedEdge < 0.04) return null;
+  // Only signal if adjusted edge is significant (lowered from 4% to 2%)
+  if (absAdjustedEdge < 0.02) return null;
 
   const direction = adjustedEdge > 0 ? 'buy_yes' : 'buy_no';
 

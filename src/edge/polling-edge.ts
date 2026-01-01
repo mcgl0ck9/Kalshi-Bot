@@ -32,9 +32,9 @@ import type { Market } from '../types/index.js';
 // =============================================================================
 
 /**
- * Minimum edge to surface (percentage points)
+ * Minimum edge to surface (percentage points) - lowered from 5 to 2
  */
-const MIN_POLLING_EDGE = 5;
+const MIN_POLLING_EDGE = 2;
 
 /**
  * Keywords that identify political/election markets
@@ -173,7 +173,9 @@ export async function detectPollingEdges(
   const pollingResult = await fetchPollingDataCached();
 
   if (!pollingResult) {
-    logger.warn('Could not fetch polling data for edge detection');
+    // Polling sources may be unavailable between election cycles
+    // 2024 election is over; 2026 midterms polling not yet active
+    logger.debug('Polling data unavailable (between election cycles or sources down)');
     return edges;
   }
 

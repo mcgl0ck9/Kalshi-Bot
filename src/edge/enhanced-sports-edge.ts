@@ -104,7 +104,7 @@ export async function detectEnhancedSportsEdges(
   for (const gameOdds of odds) {
     try {
       const edge = await analyzeGame(gameOdds, injuries, markets, sport);
-      if (edge && edge.compositeEdge >= 0.03) {  // 3% minimum edge
+      if (edge && edge.compositeEdge >= 0.01) {  // 1% minimum edge (lowered to catch smaller opportunities)
         edges.push(edge);
       }
     } catch (error) {
@@ -177,7 +177,7 @@ async function analyzeGame(
     kalshiMarket
   );
 
-  if (compositeEdge < 0.03) {
+  if (compositeEdge < 0.01) {  // Lowered from 3% to 1%
     return null;
   }
 
@@ -257,7 +257,7 @@ function calculateCompositeEdge(
   let direction: 'home' | 'away' = 'home';
 
   // Sharp/square divergence (weight: 40%)
-  if (sharpEdge && sharpEdge.edge >= 0.5) {
+  if (sharpEdge && sharpEdge.edge >= 0.2) {  // Lowered from 0.5 to 0.2 points
     const edgeContribution = sharpEdge.edge * 0.02;  // Convert points to probability
     totalEdge += edgeContribution * 0.4;
     totalWeight += 0.4;
@@ -270,7 +270,7 @@ function calculateCompositeEdge(
   }
 
   // Injury edge (weight: 30%)
-  if (injuryEdge && injuryEdge.healthDiff >= 10) {
+  if (injuryEdge && injuryEdge.healthDiff >= 5) {  // Lowered from 10 to 5
     totalEdge += injuryEdge.impactEstimate * 0.3;
     totalWeight += 0.3;
 
@@ -288,7 +288,7 @@ function calculateCompositeEdge(
   }
 
   // Weather edge (weight: 15%)
-  if (weatherEdge && weatherEdge.impactScore >= 20) {
+  if (weatherEdge && weatherEdge.impactScore >= 10) {  // Lowered from 20 to 10
     // Weather doesn't directly favor a side, but affects game style
     const weatherContribution = weatherEdge.impactScore * 0.001;
     totalEdge += weatherContribution * 0.15;
@@ -308,7 +308,7 @@ function calculateCompositeEdge(
       consensus.sharpSide
     );
 
-    if (kalshiComparison.edge >= 0.03) {
+    if (kalshiComparison.edge >= 0.01) {  // Lowered from 3% to 1%
       totalEdge += kalshiComparison.edge * 0.15;
       totalWeight += 0.15;
       signals.push(`vs Kalshi: ${kalshiComparison.direction.toUpperCase()} (${(kalshiComparison.edge * 100).toFixed(1)}% edge)`);

@@ -46,12 +46,13 @@ export function initializeChannels(): void {
   for (const [channel, envVar] of Object.entries(channelEnvMap)) {
     const webhookUrl = process.env[envVar] ?? fallbackWebhook;
 
+    // Lowered thresholds to surface more opportunities
     CHANNEL_CONFIGS.set(channel as DiscordChannel, {
       name: channel as DiscordChannel,
       webhookUrl,
       enabled: !!webhookUrl,
-      minEdge: channel === 'critical' ? 0.15 : 0.05,
-      minConfidence: channel === 'critical' ? 0.7 : 0.5,
+      minEdge: channel === 'critical' ? 0.08 : 0.02,  // was 0.15/0.05
+      minConfidence: channel === 'critical' ? 0.5 : 0.35,  // was 0.7/0.5
     });
   }
 
@@ -147,9 +148,9 @@ export function routeSignal(signal: {
 }): DiscordChannel[] {
   const channels: DiscordChannel[] = [];
 
-  // Critical channel for high-conviction signals
+  // Critical channel for high-conviction signals (lowered thresholds)
   if (signal.urgency === 'critical' ||
-      (signal.edge && signal.edge > 0.15 && signal.confidence && signal.confidence > 0.7)) {
+      (signal.edge && signal.edge >= 0.08 && signal.confidence && signal.confidence >= 0.5)) {
     channels.push('critical');
   }
 

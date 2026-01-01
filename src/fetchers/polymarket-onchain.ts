@@ -229,6 +229,58 @@ export async function fetchActiveMarkets(limit: number = 100): Promise<GammaMark
 }
 
 /**
+ * Convert Gamma market to standard Market format
+ * Used for cross-platform matching with proper prices
+ */
+export function gammaToMarket(gamma: GammaMarket): import('../types/index.js').Market {
+  // Parse outcomePrices - it's a JSON string like "[\"0.5\", \"0.5\"]"
+  let yesPrice = 0;
+  try {
+    const prices = JSON.parse(gamma.outcomePrices) as string[];
+    yesPrice = prices[0] ? parseFloat(prices[0]) : 0;
+  } catch {
+    // Fallback if parsing fails
+    yesPrice = 0;
+  }
+
+  // Parse token IDs
+  let tokenId: string | undefined;
+  try {
+    const tokens = JSON.parse(gamma.clobTokenIds) as string[];
+    tokenId = tokens[0];
+  } catch {
+    // Ignore
+  }
+
+  return {
+    platform: 'polymarket' as const,
+    id: gamma.id,
+    title: gamma.question,
+    category: 'other',
+    price: yesPrice,
+    volume: parseFloat(gamma.volume) || 0,
+    liquidity: parseFloat(gamma.liquidity) || 0,
+    url: `https://polymarket.com/event/${gamma.conditionId}`,
+    tokenId,
+  };
+}
+
+/**
+ * Fetch Polymarket markets with prices via Gamma API
+ * Use this instead of dr-manhattan for reliable price data
+ */
+export async function fetchPolymarketMarketsWithPrices(limit: number = 200): Promise<import('../types/index.js').Market[]> {
+  const gammaMarkets = await fetchActiveMarkets(limit);
+  const markets = gammaMarkets
+    .filter(m => m.active && !m.closed)
+    .map(gammaToMarket)
+    .filter(m => m.price > 0 && m.price < 1);  // Filter out invalid prices
+
+  logger.info(`Converted ${markets.length} Gamma markets with valid prices`);
+  return markets;
+}
+
+/**
  * Fetch large positions across all markets from PnL subgraph
  * This is the PRIMARY source for whale data
  */

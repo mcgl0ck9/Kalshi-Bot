@@ -350,16 +350,25 @@ async function analyzeRTMarket(
     return null;
   }
 
-  logger.info(`    ✓ Got score: ${movieData.rottenTomatoes}% from ${movieData.sources.join(', ')}`);
-
   // Get the relevant score
   const score = classified.scoreType === 'audience'
     ? movieData.audienceScore
     : movieData.rottenTomatoes;
 
   if (score === undefined) {
-    logger.debug(`No ${classified.scoreType} score found for: ${classified.movieTitle}`);
+    // Check if movie exists but just doesn't have scores yet (unreleased)
+    const hasAnyData = movieData.sources.length > 0 || movieData.tmdbRating !== undefined;
+    if (hasAnyData) {
+      logger.info(`    ⏳ Movie found but no RT score yet (unreleased or too new)`);
+    } else {
+      logger.info(`    ❌ Movie not found in any database`);
+    }
     return null;
+  }
+
+  logger.info(`    ✓ Got score: ${score}% from ${movieData.sources.join(', ')}`);
+  if (movieData.reviewCount) {
+    logger.info(`    📊 ${movieData.reviewCount} reviews`);
   }
 
   // Calculate implied probability (include review count for stability assessment)
@@ -375,8 +384,8 @@ async function analyzeRTMarket(
   // Calculate edge
   const edge = probability - marketPrice;
 
-  // Only surface significant edges (3%+)
-  if (Math.abs(edge) < 0.03) {
+  // Only surface significant edges (lowered from 3% to 1%)
+  if (Math.abs(edge) < 0.01) {
     logger.debug(`Edge too small for ${classified.movieTitle}: ${(edge * 100).toFixed(1)}%`);
     return null;
   }

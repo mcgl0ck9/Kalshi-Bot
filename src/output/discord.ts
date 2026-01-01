@@ -81,118 +81,72 @@ export async function testWebhook(): Promise<boolean> {
 
 /**
  * Format an edge opportunity for Discord
- * Enhanced with clear position guidance and action-oriented formatting
+ * COMPACT format - one-line action, key signals only
  */
 export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
   const { market, edge, confidence, direction, urgency, signals } = opportunity;
-  const emoji = getUrgencyEmoji(urgency);
 
-  // Determine action color and symbol
+  // Determine urgency indicator
+  const urgencyBar = urgency === 'critical' ? '🔴 CRITICAL' :
+                     urgency === 'standard' ? '🟡 STANDARD' : '🟢 FYI';
+
+  // Action with color
   const isYes = direction === 'BUY YES';
   const actionEmoji = isYes ? '🟢' : '🔴';
-  const actionVerb = isYes ? 'BUY YES' : 'BUY NO';
-
-  // Calculate fair value (current price + edge)
   const currentPrice = market.price * 100;
   const fairValue = isYes ? currentPrice + (edge * 100) : currentPrice - (edge * 100);
 
-  // For "vs" or "or" markets, try to clarify what YES means
-  const title = market.title?.toLowerCase() ?? '';
-  let yesExplanation = '';
-  if ((title.includes(' vs ') || title.includes(' or ')) && isYes) {
-    const match = (market.title ?? '').match(/will\s+(.+?)\s+(?:vs|or)\s+/i);
-    if (match) {
-      yesExplanation = `   ℹ️ YES = ${match[1]}`;
-    }
-  }
-
   const lines: string[] = [
-    `${emoji} **${urgency.toUpperCase()} EDGE DETECTED**`,
-    '',
-    `**${market.title?.slice(0, 80)}**`,
-    '',
-    // ═══════════════════════════════════════════════════════════════════
-    // PROMINENT ACTION SECTION
-    // ═══════════════════════════════════════════════════════════════════
-    '```',
-    `${actionEmoji} ACTION: ${actionVerb} @ ${currentPrice.toFixed(0)}¢`,
-    '```',
-    yesExplanation,
-    '',
-    // Pricing breakdown
-    `📍 **Current Price:** ${currentPrice.toFixed(0)}¢`,
-    `📊 **Fair Value:** ${fairValue.toFixed(0)}¢`,
-    `📈 **Edge:** +${(edge * 100).toFixed(1)}%`,
-    `🎯 **Confidence:** ${(confidence * 100).toFixed(0)}%`,
-    '',
-  ].filter(Boolean);
+    `**${urgencyBar}** | ${actionEmoji} **${direction}** @ ${currentPrice.toFixed(0)}¢ → ${fairValue.toFixed(0)}¢`,
+    `${market.title?.slice(0, 65)}${(market.title?.length ?? 0) > 65 ? '...' : ''}`,
+    `Edge: **+${(edge * 100).toFixed(1)}%** | Conf: ${(confidence * 100).toFixed(0)}%`,
+  ];
 
-  // ═══════════════════════════════════════════════════════════════════
-  // SIGNAL EXPLANATIONS - WHY we think this is mispriced
-  // ═══════════════════════════════════════════════════════════════════
-  lines.push('**Why this edge exists:**');
+  // Compact signals - one line per type
+  const signalsList: string[] = [];
 
   if (signals.crossPlatform) {
     const cp = signals.crossPlatform;
-    const kalshiP = (cp.kalshiPrice * 100).toFixed(0);
-    const polyP = (cp.polymarketPrice * 100).toFixed(0);
-    const cheaper = cp.kalshiPrice < cp.polymarketPrice ? 'Kalshi' : 'Polymarket';
-    lines.push(`• Cross-platform divergence: Kalshi ${kalshiP}¢ vs Poly ${polyP}¢ (${cheaper} is cheaper)`);
-    if (cp.polymarket?.url) {
-      lines.push(`• [View on Polymarket](${cp.polymarket.url})`);
-    }
+    const cheaper = cp.kalshiPrice < cp.polymarketPrice ? 'K' : 'P';
+    signalsList.push(`K:${(cp.kalshiPrice * 100).toFixed(0)}¢/P:${(cp.polymarketPrice * 100).toFixed(0)}¢ (buy ${cheaper})`);
   }
-
-  if (signals.sentiment) {
-    const s = signals.sentiment;
-    const sentimentDir = s.sentimentLabel === 'bullish' ? 'positive' : s.sentimentLabel === 'bearish' ? 'negative' : 'neutral';
-    lines.push(`• News sentiment is ${sentimentDir} (${s.articleCount} articles) but price hasn't adjusted`);
-  }
-
-  if (signals.whale) {
-    const w = signals.whale;
-    lines.push(`• Whale activity: ${w.whale} showing ${w.sentiment} conviction`);
-  }
-
   if (signals.sportsConsensus !== undefined) {
-    const consensus = (signals.sportsConsensus * 100).toFixed(0);
-    lines.push(`• Sportsbook consensus: ${consensus}% (sharper money says this is mispriced)`);
-    if (signals.matchedGame) {
-      lines.push(`• Game: ${signals.matchedGame}`);
-    }
+    signalsList.push(`Sports: ${(signals.sportsConsensus * 100).toFixed(0)}% consensus`);
   }
-
+  if (signals.sentiment) {
+    signalsList.push(`Sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
+  }
+  if (signals.whale) {
+    signalsList.push(`Whale: ${signals.whale.sentiment}`);
+  }
   if (signals.fedRegime) {
-    lines.push(`• Fed regime bias: ${signals.fedRegime} (historical FedWatch adjustment)`);
+    signalsList.push(`Fed: ${signals.fedRegime}`);
   }
-
   if (signals.injuryOverreaction) {
-    lines.push(`• Injury overreaction detected: market moved too far on injury news`);
+    signalsList.push('Injury overreaction');
   }
-
   if (signals.weatherBias) {
-    lines.push(`• Weather forecast bias: ${signals.weatherBias} (climatological adjustment)`);
+    signalsList.push(`Weather: ${signals.weatherBias}`);
   }
-
   if (signals.recencyBias) {
-    lines.push(`• Recency bias: price overreacted vs base rates`);
+    signalsList.push('Recency bias');
+  }
+  if (signals.measles) {
+    signalsList.push(`Measles: ${signals.measles.currentCases}→${signals.measles.projectedYearEnd} (threshold: ${signals.measles.threshold})`);
   }
 
-  // Add sizing if available
+  if (signalsList.length > 0) {
+    lines.push(`Signals: ${signalsList.slice(0, 3).join(' | ')}`);
+  }
+
+  // Position sizing (compact)
   if (opportunity.sizing && opportunity.sizing.positionSize > 0) {
-    lines.push('');
-    lines.push('**Position Sizing:**');
-    lines.push(`• Suggested size: **${formatCurrency(opportunity.sizing.positionSize)}**`);
-    if (opportunity.sizing.kellyFraction) {
-      lines.push(`• Kelly fraction: ${(opportunity.sizing.kellyFraction * 100).toFixed(1)}%`);
-    }
+    lines.push(`Size: ${formatCurrency(opportunity.sizing.positionSize)} (${(opportunity.sizing.kellyFraction ?? 0) * 100}% Kelly)`);
   }
 
-  // Platform and link
-  lines.push('');
-  lines.push(`Platform: **${market.platform?.toUpperCase() ?? 'UNKNOWN'}**`);
+  // Trade link
   if (market.url) {
-    lines.push(`[>>> TRADE NOW <<<](${market.url})`);
+    lines.push(`[Trade on ${market.platform?.toUpperCase()}](${market.url})`);
   }
 
   return lines.join('\n');
@@ -200,7 +154,7 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
 
 /**
  * Format a summary report for Discord
- * Enhanced with clear action items and position guidance
+ * COMPACT format for quick scanning
  */
 export function formatSummaryReport(
   opportunities: EdgeOpportunity[],
@@ -216,109 +170,66 @@ export function formatSummaryReport(
   const now = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 
   const lines: string[] = [
-    '📊 **MARKET INTELLIGENCE REPORT**',
-    `_${now} ET_`,
-    '',
-    '═══════════════════════════════════════',
+    `📊 **SCAN REPORT** | ${now} ET`,
+    `Markets: ${stats.totalMarkets} | Articles: ${stats.articlesAnalyzed} | Edges: ${opportunities.length}`,
     '',
   ];
 
-  // Quick stats
-  lines.push('**Scan Summary:**');
-  lines.push(`• Markets: ${stats.totalMarkets} (Kalshi: ${stats.kalshiMarkets}, Poly: ${stats.polymarketMarkets})`);
-  lines.push(`• Articles: ${stats.articlesAnalyzed}`);
-  lines.push(`• Edges found: ${opportunities.length}`);
-  lines.push('');
-
-  // ═══════════════════════════════════════════════════════════════════
-  // ACTIONABLE OPPORTUNITIES - Most important section
-  // ═══════════════════════════════════════════════════════════════════
-  // Filter out bad data (0 price, >50% edge which is suspicious)
+  // Filter valid opportunities
   const validOpportunities = opportunities.filter(opp =>
     opp.market.price > 0 && opp.edge <= 0.50
   );
 
-  if (validOpportunities.length > 0) {
-    lines.push('═══════════════════════════════════════');
-    lines.push('**🎯 ACTIONABLE OPPORTUNITIES**');
-    lines.push('');
+  // Group by urgency
+  const critical = validOpportunities.filter(o => o.urgency === 'critical');
+  const standard = validOpportunities.filter(o => o.urgency === 'standard');
+  const fyi = validOpportunities.filter(o => o.urgency === 'fyi');
 
-    for (const opp of validOpportunities.slice(0, 5)) {
-      const emoji = getUrgencyEmoji(opp.urgency);
-      const actionEmoji = opp.direction === 'BUY YES' ? '🟢' : '🔴';
-      const price = (opp.market.price * 100).toFixed(0);
-      const edgePct = (opp.edge * 100).toFixed(0);
-
-      lines.push(`${emoji} **${opp.market.title?.slice(0, 50)}**`);
-      lines.push(`   ${actionEmoji} ${opp.direction} @ ${price}¢ | Edge: ${edgePct}% | Conf: ${(opp.confidence * 100).toFixed(0)}%`);
-
-      // For "vs" or "or" markets, clarify what YES means
-      const title = opp.market.title?.toLowerCase() ?? '';
-      if ((title.includes(' vs ') || title.includes(' or ')) && opp.direction === 'BUY YES') {
-        // Try to extract the first option as what YES means
-        const match = title.match(/will\s+(.+?)\s+(?:vs|or)\s+/i);
-        if (match) {
-          lines.push(`   ℹ️ YES = ${match[1]}`);
-        }
-      }
-
-      if (opp.sizing && opp.sizing.positionSize > 0) {
-        lines.push(`   💰 Size: ${formatCurrency(opp.sizing.positionSize)}`);
-      }
-      if (opp.market.url) {
-        lines.push(`   [Trade](${opp.market.url})`);
-      }
-      lines.push('');
+  // Critical alerts first
+  if (critical.length > 0) {
+    lines.push('🔴 **CRITICAL** ────────────────');
+    for (const opp of critical.slice(0, 3)) {
+      const action = opp.direction === 'BUY YES' ? '🟢 YES' : '🔴 NO';
+      lines.push(`${action} @ ${(opp.market.price * 100).toFixed(0)}¢ | +${(opp.edge * 100).toFixed(0)}% | ${opp.market.title?.slice(0, 40)}...`);
+      if (opp.market.url) lines.push(`  └─ [Trade](${opp.market.url})`);
     }
-  } else {
-    lines.push('_No actionable edges found this scan._');
     lines.push('');
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // CROSS-PLATFORM DIVERGENCES
-  // ═══════════════════════════════════════════════════════════════════
+  // Standard alerts
+  if (standard.length > 0) {
+    lines.push('🟡 **STANDARD** ────────────────');
+    for (const opp of standard.slice(0, 5)) {
+      const action = opp.direction === 'BUY YES' ? '🟢' : '🔴';
+      lines.push(`${action} ${(opp.market.price * 100).toFixed(0)}¢→${((opp.market.price + opp.edge) * 100).toFixed(0)}¢ | ${opp.market.title?.slice(0, 45)}...`);
+    }
+    lines.push('');
+  }
+
+  // FYI (just count)
+  if (fyi.length > 0) {
+    lines.push(`🟢 **FYI**: ${fyi.length} lower-priority edges detected`);
+    lines.push('');
+  }
+
+  // Cross-platform (compact)
   if (divergences.length > 0) {
-    lines.push('═══════════════════════════════════════');
-    lines.push('**📊 CROSS-PLATFORM DIVERGENCES**');
-    lines.push('');
-
+    lines.push('📊 **ARBITRAGE** ────────────────');
     for (const div of divergences.slice(0, 3)) {
-      const kalshiP = (div.kalshi.price * 100).toFixed(0);
-      const polyP = (div.polymarket.price * 100).toFixed(0);
-      const diffPct = (div.absDifference * 100).toFixed(0);
-      const cheaper = div.kalshi.price < div.polymarket.price ? 'Kalshi' : 'Poly';
-      const actionEmoji = div.polymarketMoreBullish ? '🔴' : '🟢';
-
-      lines.push(`${actionEmoji} **${div.kalshi.title?.slice(0, 45)}**`);
-      lines.push(`   K: ${kalshiP}¢ vs P: ${polyP}¢ (Δ${diffPct}%) - Buy YES on ${cheaper}`);
-      if (div.kalshi.url) {
-        lines.push(`   [Kalshi](${div.kalshi.url})`);
-      }
-      if (div.polymarket.url) {
-        lines.push(`   [Polymarket](${div.polymarket.url})`);
-      }
-      lines.push('');
+      const cheaper = div.kalshi.price < div.polymarket.price ? 'K' : 'P';
+      lines.push(`${div.kalshi.title?.slice(0, 35)}... | K:${(div.kalshi.price * 100).toFixed(0)}¢ P:${(div.polymarket.price * 100).toFixed(0)}¢ (buy ${cheaper})`);
     }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  // WHALE ACTIVITY
-  // ═══════════════════════════════════════════════════════════════════
-  if (whaleSignals.length > 0) {
-    lines.push('═══════════════════════════════════════');
-    lines.push('**🐋 WHALE ACTIVITY**');
     lines.push('');
-
-    for (const signal of whaleSignals.slice(0, 3)) {
-      const emoji = signal.sentiment === 'bullish' ? '🟢' : signal.sentiment === 'bearish' ? '🔴' : '⚪';
-      lines.push(`${emoji} **${signal.whale}** (${signal.sentiment})`);
-      lines.push(`   "${signal.text.slice(0, 60)}..."`);
-      lines.push('');
-    }
   }
 
-  lines.push('═══════════════════════════════════════');
+  // Whale activity (compact)
+  if (whaleSignals.length > 0) {
+    lines.push(`🐋 **WHALES**: ${whaleSignals.length} signals`);
+    for (const s of whaleSignals.slice(0, 2)) {
+      const emoji = s.sentiment === 'bullish' ? '🟢' : s.sentiment === 'bearish' ? '🔴' : '⚪';
+      lines.push(`  ${emoji} ${s.whale}: ${s.text.slice(0, 50)}...`);
+    }
+  }
 
   return lines.join('\n');
 }

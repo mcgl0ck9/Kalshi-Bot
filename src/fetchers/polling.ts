@@ -466,7 +466,8 @@ export async function fetchPollingData(): Promise<FetchResult<PollingData> | nul
   }
 
   if (results.length === 0) {
-    logger.warn('All polling sources failed');
+    // Expected between election cycles - 2024 election data is stale
+    logger.debug('All polling sources unavailable (between election cycles)');
     return null;
   }
 

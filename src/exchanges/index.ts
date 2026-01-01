@@ -13,6 +13,7 @@ import {
 } from '@alango/dr-manhattan';
 import type { Market, MarketCategory } from '../types/index.js';
 import { logger } from '../utils/index.js';
+import { kalshiFetchJson, hasKalshiAuth } from '../utils/kalshi-auth.js';
 import * as config from '../config.js';
 
 // =============================================================================
@@ -84,10 +85,11 @@ export async function fetchKalshiSportsMarkets(): Promise<Market[]> {
   try {
     const allMarkets: Market[] = [];
 
-    // Sports-related series prefixes to fetch
-    const sportsSeries = [
-      'KX', // General sports prefix
-    ];
+    // Check if we have auth
+    if (!hasKalshiAuth()) {
+      logger.debug('Skipping sports markets fetch - no Kalshi auth configured');
+      return [];
+    }
 
     // Fetch active markets with cursor pagination
     let cursor: string | null = null;
@@ -96,26 +98,22 @@ export async function fetchKalshiSportsMarkets(): Promise<Market[]> {
     let pages = 0;
 
     while (pages < maxPages) {
-      const url = new URL('https://trading-api.kalshi.com/trade-api/v2/markets');
-      url.searchParams.set('limit', '200');
-      url.searchParams.set('status', 'active');
+      let path = '/trade-api/v2/markets?limit=200&status=open';
       if (cursor) {
-        url.searchParams.set('cursor', cursor);
+        path += `&cursor=${encodeURIComponent(cursor)}`;
       }
 
-      const response = await fetch(url.toString(), {
-        headers: { 'Accept': 'application/json' },
-      });
-
-      if (!response.ok) {
-        logger.warn(`Kalshi sports markets fetch error: ${response.status}`);
-        break;
-      }
-
-      const data = await response.json() as {
+      const data = await kalshiFetchJson<{
         markets?: unknown[];
         cursor?: string;
-      };
+      }>(path);
+
+      if (!data) {
+        if (pages === 0) {
+          logger.warn('Kalshi sports markets fetch failed on first page');
+        }
+        break;
+      }
 
       const markets = data.markets ?? [];
       if (markets.length === 0) break;
@@ -190,32 +188,35 @@ export async function fetchKalshiSportsMarkets(): Promise<Market[]> {
 export async function fetchAllKalshiMarkets(maxMarkets: number = 1000): Promise<Market[]> {
   try {
     const allMarkets: Market[] = [];
+
+    // Check if we have auth
+    if (!hasKalshiAuth()) {
+      logger.debug('Skipping paginated fetch - no Kalshi auth configured');
+      return [];
+    }
+
     let cursor: string | null = null;
     let totalFetched = 0;
     const maxPages = Math.ceil(maxMarkets / 200);
     let pages = 0;
 
     while (pages < maxPages) {
-      const url = new URL('https://trading-api.kalshi.com/trade-api/v2/markets');
-      url.searchParams.set('limit', '200');
-      url.searchParams.set('status', 'active');
+      let path = '/trade-api/v2/markets?limit=200&status=open';
       if (cursor) {
-        url.searchParams.set('cursor', cursor);
+        path += `&cursor=${encodeURIComponent(cursor)}`;
       }
 
-      const response = await fetch(url.toString(), {
-        headers: { 'Accept': 'application/json' },
-      });
-
-      if (!response.ok) {
-        logger.warn(`Kalshi fetch error: ${response.status}`);
-        break;
-      }
-
-      const data = await response.json() as {
+      const data = await kalshiFetchJson<{
         markets?: unknown[];
         cursor?: string;
-      };
+      }>(path);
+
+      if (!data) {
+        if (pages === 0) {
+          logger.warn('Kalshi paginated fetch failed on first page');
+        }
+        break;
+      }
 
       const markets = data.markets ?? [];
       if (markets.length === 0) break;
@@ -265,16 +266,14 @@ export async function fetchAllKalshiMarkets(maxMarkets: number = 1000): Promise<
 export async function fetchKalshiRTMarkets(): Promise<Market[]> {
   try {
     // Find all RT-related series (series endpoint, not events)
-    const seriesResponse = await fetch('https://trading-api.kalshi.com/trade-api/v2/series?limit=500', {
-      headers: { 'Accept': 'application/json' },
-    });
+    const seriesData = await kalshiFetchJson<{ series?: Array<{ ticker: string; title: string }> }>(
+      '/trade-api/v2/series?limit=500'
+    );
 
-    if (!seriesResponse.ok) {
-      logger.warn(`Failed to fetch series: ${seriesResponse.status}`);
+    if (!seriesData) {
+      logger.warn('Failed to fetch series for RT markets');
       return [];
     }
-
-    const seriesData = await seriesResponse.json() as { series?: Array<{ ticker: string; title: string }> };
     const allSeries = seriesData.series ?? [];
 
     // Find RT-related series (ticker contains KXRT or title mentions Rotten Tomatoes)
@@ -318,15 +317,10 @@ export async function fetchKalshiRTMarkets(): Promise<Market[]> {
       const batchResults = await Promise.all(
         batch.map(async (series) => {
           try {
-            const marketsResponse = await fetch(
-              `https://trading-api.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`,
-              { headers: { 'Accept': 'application/json' } }
+            const data = await kalshiFetchJson<{ markets?: unknown[] }>(
+              `/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`
             );
-            if (!marketsResponse.ok) {
-              logger.debug(`Failed to fetch markets for ${series.ticker}: ${marketsResponse.status}`);
-              return [];
-            }
-            const data = await marketsResponse.json() as { markets?: unknown[] };
+            if (!data) return [];
             const markets = data.markets ?? [];
             if (markets.length > 0) {
               logger.info(`  📊 ${series.ticker}: ${markets.length} markets found`);
@@ -393,16 +387,14 @@ export async function fetchKalshiRTMarkets(): Promise<Market[]> {
 export async function fetchKalshiWeatherMarkets(): Promise<Market[]> {
   try {
     // Find all weather-related series
-    const seriesResponse = await fetch('https://trading-api.kalshi.com/trade-api/v2/series?limit=500', {
-      headers: { 'Accept': 'application/json' },
-    });
+    const seriesData = await kalshiFetchJson<{ series?: Array<{ ticker: string; title: string }> }>(
+      '/trade-api/v2/series?limit=500'
+    );
 
-    if (!seriesResponse.ok) {
-      logger.warn(`Failed to fetch series for weather: ${seriesResponse.status}`);
+    if (!seriesData) {
+      logger.warn('Failed to fetch series for weather markets');
       return [];
     }
-
-    const seriesData = await seriesResponse.json() as { series?: Array<{ ticker: string; title: string }> };
     const allSeries = seriesData.series ?? [];
 
     // Weather-related keywords in series tickers and titles
@@ -452,13 +444,10 @@ export async function fetchKalshiWeatherMarkets(): Promise<Market[]> {
       const batchResults = await Promise.all(
         batch.map(async (series) => {
           try {
-            const marketsResponse = await fetch(
-              `https://trading-api.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`,
-              { headers: { 'Accept': 'application/json' } }
+            const data = await kalshiFetchJson<{ markets?: unknown[] }>(
+              `/trade-api/v2/markets?series_ticker=${series.ticker}&limit=50`
             );
-            if (!marketsResponse.ok) return [];
-            const data = await marketsResponse.json() as { markets?: unknown[] };
-            return data.markets ?? [];
+            return data?.markets ?? [];
           } catch (e) {
             return [];
           }

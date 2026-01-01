@@ -18,7 +18,7 @@
  */
 
 import type { Market } from '../types/index.js';
-import { logger } from '../utils/index.js';
+import { logger, kalshiFetchJson } from '../utils/index.js';
 import { EDGE_THRESHOLDS } from '../config.js';
 
 // =============================================================================
@@ -308,8 +308,8 @@ export async function findFedSpeechEdges(
     const marketPrice = market.price ?? 0;
     const edge = adjustedFrequency - marketPrice;
 
-    // Only surface significant edges (5%+)
-    if (Math.abs(edge) < 0.05) continue;
+    // Only surface significant edges (lowered from 5% to 2%)
+    if (Math.abs(edge) < 0.02) continue;
 
     // Determine signal strength
     let signalStrength: 'critical' | 'actionable' | 'watchlist';
@@ -355,17 +355,14 @@ export async function findFedSpeechEdges(
 export async function fetchFedMentionMarkets(): Promise<Market[]> {
   try {
     // First find the Fed mention series
-    const seriesResponse = await fetch(
-      'https://trading-api.kalshi.com/trade-api/v2/series?limit=500',
-      { headers: { 'Accept': 'application/json' } }
+    const seriesData = await kalshiFetchJson<{ series?: Array<{ ticker: string; title: string }> }>(
+      '/trade-api/v2/series?limit=500'
     );
 
-    if (!seriesResponse.ok) {
-      logger.warn(`Failed to fetch series: ${seriesResponse.status}`);
+    if (!seriesData) {
+      logger.warn('Failed to fetch series for Fed mention markets');
       return [];
     }
-
-    const seriesData = await seriesResponse.json() as { series?: Array<{ ticker: string; title: string }> };
     const allSeries = seriesData.series ?? [];
 
     // Find Fed mention series
@@ -385,14 +382,11 @@ export async function fetchFedMentionMarkets(): Promise<Market[]> {
 
     for (const series of fedSeries) {
       try {
-        const marketsResponse = await fetch(
-          `https://trading-api.kalshi.com/trade-api/v2/markets?series_ticker=${series.ticker}&limit=100`,
-          { headers: { 'Accept': 'application/json' } }
+        const data = await kalshiFetchJson<{ markets?: unknown[] }>(
+          `/trade-api/v2/markets?series_ticker=${series.ticker}&limit=100`
         );
 
-        if (!marketsResponse.ok) continue;
-
-        const data = await marketsResponse.json() as { markets?: unknown[] };
+        if (!data) continue;
         const markets = data.markets ?? [];
 
         for (const m of markets) {

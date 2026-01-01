@@ -75,7 +75,7 @@ export interface SentimentEdge {
 
 export interface EdgeOpportunity {
   market: Market;
-  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined';
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles';
   edge: number;
   confidence: number;
   urgency: 'critical' | 'standard' | 'fyi';
@@ -104,6 +104,12 @@ export interface EdgeOpportunity {
       keyword: string;
       historicalFrequency: number;
       reasoning: string;
+    };
+    // CDC measles case count analysis
+    measles?: {
+      currentCases: number;
+      threshold: number;
+      projectedYearEnd: number;
     };
   };
   sizing?: PositionSizing;

@@ -35,17 +35,17 @@ export const OMDB_API_KEY = process.env.OMDB_API_KEY ?? '';  // Free tier: omdba
 export const BANKROLL = parseFloat(process.env.BANKROLL ?? '10000');
 export const MAX_POSITION_PCT = parseFloat(process.env.MAX_POSITION_PCT ?? '0.25');
 
-// Tiered edge thresholds (v2 - lowered for more opportunities)
+// Tiered edge thresholds (v3 - lowered further to catch smallest edges)
 export const EDGE_THRESHOLDS = {
-  critical: 0.12,      // 12%+ edge = critical alert, high conviction (was 15%)
-  actionable: 0.06,    // 6%+ edge = actionable, worth trading (was 8%)
-  watchlist: 0.03,     // 3%+ edge = watchlist, monitor for confirmation (was 4%)
-  minimum: 0.015,      // 1.5%+ edge = minimum to surface at all (was 2%)
+  critical: 0.08,      // 8%+ edge = critical alert, high conviction (was 12%)
+  actionable: 0.04,    // 4%+ edge = actionable, worth trading (was 6%)
+  watchlist: 0.02,     // 2%+ edge = watchlist, monitor for confirmation (was 3%)
+  minimum: 0.01,       // 1%+ edge = minimum to surface at all (was 1.5%)
 };
 
 // Legacy threshold (uses actionable tier)
-export const MIN_EDGE_THRESHOLD = parseFloat(process.env.MIN_EDGE_THRESHOLD ?? '0.02');  // was 0.04
-export const MIN_CONFIDENCE = parseFloat(process.env.MIN_CONFIDENCE ?? '0.40');  // was 0.50
+export const MIN_EDGE_THRESHOLD = parseFloat(process.env.MIN_EDGE_THRESHOLD ?? '0.01');  // was 0.02
+export const MIN_CONFIDENCE = parseFloat(process.env.MIN_CONFIDENCE ?? '0.35');  // was 0.40
 
 // =============================================================================
 // POLYMARKET ON-CHAIN DATA (Goldsky Subgraphs - FREE)

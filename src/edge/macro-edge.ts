@@ -165,8 +165,8 @@ export function findFedEdge(
   const edge = impliedProbability - market.price;
   const absEdge = Math.abs(edge);
 
-  // Skip if edge is too small
-  if (absEdge < 0.03) return null;
+  // Skip if edge is too small (lowered from 3% to 1%)
+  if (absEdge < 0.01) return null;
 
   const direction = edge > 0 ? 'buy_yes' : 'buy_no';
   const signalStrength: 'strong' | 'moderate' | 'weak' =
@@ -223,7 +223,7 @@ export function findCPIEdge(
   const edge = impliedProbability - market.price;
   const absEdge = Math.abs(edge);
 
-  if (absEdge < 0.05) return null;
+  if (absEdge < 0.02) return null;  // lowered from 5% to 2%
 
   const direction = edge > 0 ? 'buy_yes' : 'buy_no';
   const signalStrength: 'strong' | 'moderate' | 'weak' =
@@ -279,7 +279,7 @@ export function findJobsEdge(
   const edge = impliedProbability - market.price;
   const absEdge = Math.abs(edge);
 
-  if (absEdge < 0.05) return null;
+  if (absEdge < 0.02) return null;  // lowered from 5% to 2%
 
   const direction = edge > 0 ? 'buy_yes' : 'buy_no';
   const signalStrength: 'strong' | 'moderate' | 'weak' =
@@ -355,7 +355,7 @@ export function findGDPEdge(
   const edge = impliedProbability - market.price;
   const absEdge = Math.abs(edge);
 
-  if (absEdge < 0.05) return null;
+  if (absEdge < 0.02) return null;  // lowered from 5% to 2%
 
   const direction = edge > 0 ? 'buy_yes' : 'buy_no';
   const signalStrength: 'strong' | 'moderate' | 'weak' =

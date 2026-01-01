@@ -4,7 +4,7 @@
  * Aggregates all edge detection strategies:
  * - Macro edge (Fed, CPI, Jobs, GDP)
  * - Fed regime bias adjustment (validated signal)
- * - Fed speech keyword analyzer (NEW - historical transcript analysis)
+ * - Fed speech keyword analyzer (historical transcript analysis)
  * - Injury overreaction detection (validated signal)
  * - Weather forecast overreaction (validated signal)
  * - Recency bias / base rate neglect (validated signal)
@@ -12,6 +12,8 @@
  * - Entertainment edge (Rotten Tomatoes, box office)
  * - Polling edge (538, RCP, Silver Bulletin)
  * - Enhanced sports edge (injuries + weather + sharp/square)
+ * - City weather edge (NOAA climate normals)
+ * - CDC Measles edge (case count projections)
  * - New market scanner
  * - Calibration tracking
  *
@@ -24,7 +26,8 @@
  * 6. Entertainment Edge - RT scores vs market thresholds (strong edge!)
  * 7. Polling Edge - Aggregator consensus vs market prices
  * 8. Enhanced Sports Edge - Composite signal (sharp books + injuries + weather)
- * 9. Fed Speech Keywords - Historical transcript word frequency vs market prices (NEW)
+ * 9. Fed Speech Keywords - Historical transcript word frequency vs market prices
+ * 10. CDC Measles - Weekly case count trajectory vs threshold markets
  *
  * SKIPPED SIGNALS (failed adversarial testing):
  * - Simple FedWatch arbitrage (too noisy, other traders see it too)
@@ -45,3 +48,4 @@ export * from './entertainment-edge.js';
 export * from './polling-edge.js';
 export * from './enhanced-sports-edge.js';
 export * from './city-weather-edge.js';
+export * from './measles-edge.js';

@@ -251,8 +251,8 @@ export function analyzeRecencyBias(
   const priceMove = currentPrice - priorPrice;
   const absPriceMove = Math.abs(priceMove);
 
-  // Only analyze if there was a significant move
-  if (absPriceMove < 0.05) {
+  // Only analyze if there was a significant move (lowered from 5% to 2%)
+  if (absPriceMove < 0.02) {
     return null;
   }
 
@@ -419,8 +419,8 @@ export function analyzeMarketsForRecencyBiasSimple(
     const deviation = market.price - baseRate;
     const absDeviation = Math.abs(deviation);
 
-    // Only flag large deviations
-    if (absDeviation < 0.15) continue;
+    // Only flag large deviations (lowered from 15% to 8%)
+    if (absDeviation < 0.08) continue;
 
     // Assume deviation happened recently (conservative)
     const signal = analyzeRecencyBias(market, baseRate, 3);

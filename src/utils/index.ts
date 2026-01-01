@@ -3,6 +3,7 @@
  */
 
 export { logger } from './logger.js';
+export { kalshiFetchJson, hasKalshiAuth, getKalshiAuthHeaders } from './kalshi-auth.js';
 
 /**
  * Normalize text for comparison

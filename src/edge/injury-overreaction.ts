@@ -83,11 +83,11 @@ const EXPECTED_SENTIMENT_BY_SEVERITY: Record<string, number> = {
   minor: -0.15,
 };
 
-// Overreaction thresholds
+// Overreaction thresholds (lowered to catch smaller edges)
 const OVERREACTION_THRESHOLDS = {
-  strong: 0.25,   // Sentiment 25%+ more negative than expected
-  moderate: 0.15, // Sentiment 15-25% more negative
-  weak: 0.08,     // Sentiment 8-15% more negative
+  strong: 0.15,   // Sentiment 15%+ more negative than expected (was 25%)
+  moderate: 0.08, // Sentiment 8-15% more negative (was 15%)
+  weak: 0.03,     // Sentiment 3-8% more negative (was 8%)
 };
 
 // =============================================================================
