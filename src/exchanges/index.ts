@@ -341,12 +341,13 @@ export async function fetchKalshiRTMarkets(): Promise<Market[]> {
           const subtitle = market.subtitle as string ?? '';
           const status = market.status as string ?? '';
 
-          // Debug: log Primate markets specifically
-          if (ticker.includes('PRIMATE')) {
-            logger.info(`    Primate market ${ticker}: status=${status}`);
+          // Debug: log first market from each series to see status values
+          if (i === 0 && markets.indexOf(m) === 0) {
+            logger.debug(`    ${ticker}: status="${status}"`);
           }
 
-          if (status !== 'active') continue;
+          // Accept active or open markets
+          if (status !== 'active' && status !== 'open') continue;
 
           // Combine title and subtitle for full market description
           // e.g., "Primate Rotten Tomatoes score?" + "Above 85" = threshold of 85

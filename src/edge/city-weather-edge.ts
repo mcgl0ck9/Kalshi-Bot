@@ -504,6 +504,24 @@ export async function analyzeCityWeatherMarkets(
       if (daysRemaining <= 7) confidence += 0.1; // Near month end = more certain
       confidence = Math.min(0.85, confidence);
 
+      // CRITICAL: Early in month, data is unreliable
+      // Reduce confidence significantly for first 3 days of month
+      const dayOfMonth = new Date().getDate();
+      if (dayOfMonth <= 3) {
+        confidence = Math.min(0.35, confidence);
+        // Skip very large edges early in month - likely data issues
+        if (absEdge > 0.50) {
+          logger.debug(`Skipping ${city} ${parsed.measurementType}: ${(absEdge * 100).toFixed(0)}% edge on day ${dayOfMonth} (too early in month)`);
+          continue;
+        }
+      }
+
+      // Require minimum confidence for large edges
+      if (absEdge > 0.40 && confidence < 0.50) {
+        logger.debug(`Skipping ${city}: ${(absEdge * 100).toFixed(0)}% edge but only ${(confidence * 100).toFixed(0)}% confidence`);
+        continue;
+      }
+
       const reasoning = `${climateData.name} ${parsed.measurementType}: ` +
         `MTD=${currentTotal.toFixed(1)}${parsed.unit}, ` +
         `Need=${(parsed.threshold - currentTotal).toFixed(1)}${parsed.unit} more, ` +

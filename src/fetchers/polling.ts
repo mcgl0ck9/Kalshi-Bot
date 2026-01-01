@@ -501,8 +501,8 @@ export async function fetchPollingData(): Promise<FetchResult<PollingData> | nul
   }
 
   if (results.length === 0) {
-    // Expected between election cycles - 2024 election data is stale
-    logger.debug('All polling sources unavailable (between election cycles)');
+    // Expected between election cycles - 538 API endpoints deprecated
+    // Don't log as error - polling is optional and often unavailable
     return null;
   }
 
@@ -546,22 +546,22 @@ export async function fetchPollingData(): Promise<FetchResult<PollingData> | nul
 
 /**
  * Fetch polling data with caching
+ * Note: Polling sources (538, RCP) are often unavailable between election cycles
+ * This function suppresses errors to avoid log noise during non-election periods
  */
 export async function fetchPollingDataCached(): Promise<FetchResult<PollingData> | null> {
-  return fetchWithFallback<PollingData>(
-    'polling:national',
-    [
-      createSource('aggregated', async () => {
-        const result = await fetchPollingData();
-        return result?.data ?? null;
-      }),
-    ],
-    {
-      cacheTTL: 30 * 60 * 1000,  // 30 minutes
-      useStaleOnError: true,
-      staleTTL: 4 * 60 * 60 * 1000,  // 4 hours
+  try {
+    // Try direct fetch first (bypasses error logging in fetchWithFallback)
+    const directResult = await fetchPollingData();
+    if (directResult) {
+      return directResult;
     }
-  );
+    // No data available - this is normal between election cycles
+    return null;
+  } catch {
+    // Silently fail - polling is optional and often unavailable
+    return null;
+  }
 }
 
 // =============================================================================

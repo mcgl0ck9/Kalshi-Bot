@@ -212,13 +212,67 @@ const SECTOR_KEYWORDS: Record<string, Record<string, EarningsKeywordFrequency>> 
 
 // Map company tickers to sectors
 const COMPANY_SECTORS: Record<string, { sector: string; name: string }> = {
+  // Gaming
   'KXEARNINGSMENTIONEA': { sector: 'gaming', name: 'EA' },
+  'KXEARNINGSMENTIONGME': { sector: 'gaming', name: 'GameStop' },
+  'KXEARNINGSMENTIONAMC': { sector: 'gaming', name: 'AMC' },
+
+  // AI/Tech Infrastructure
   'KXEARNINGSMENTIONNBIS': { sector: 'ai_infrastructure', name: 'Nebius' },
-  'KXEARNINGSMENTIONACI': { sector: 'grocery', name: 'Albertsons' },
-  'KXEARNINGSMENTIONJPM': { sector: 'fintech', name: 'JPMorgan' },
   'KXEARNINGSMENTIONINTC': { sector: 'ai_infrastructure', name: 'Intel' },
   'KXEARNINGSMENTIONTSLA': { sector: 'ai_infrastructure', name: 'Tesla' },
   'KXEARNINGSMENTIONUBER': { sector: 'ai_infrastructure', name: 'Uber' },
+  'KXEARNINGSMENTIONNVDA': { sector: 'ai_infrastructure', name: 'Nvidia' },
+  'KXEARNINGSMENTIONAMD': { sector: 'ai_infrastructure', name: 'AMD' },
+  'KXEARNINGSMENTIONGOOGL': { sector: 'ai_infrastructure', name: 'Google' },
+  'KXEARNINGSMENTIONMETA': { sector: 'ai_infrastructure', name: 'Meta' },
+  'KXEARNINGSMENTIONAAPL': { sector: 'ai_infrastructure', name: 'Apple' },
+  'KXEARNINGSMENTIONORCL': { sector: 'ai_infrastructure', name: 'Oracle' },
+  'KXEARNINGSMENTIONCRM': { sector: 'ai_infrastructure', name: 'Salesforce' },
+  'KXEARNINGSMENTIONSNOW': { sector: 'ai_infrastructure', name: 'Snowflake' },
+  'KXEARNINGSMENTIONMRVL': { sector: 'ai_infrastructure', name: 'Marvell' },
+  'KXEARNINGSMENTIONMU': { sector: 'ai_infrastructure', name: 'Micron' },
+  'KXEARNINGSMENTIONDELL': { sector: 'ai_infrastructure', name: 'Dell' },
+  'KXEARNINGSMENTIONHPE': { sector: 'ai_infrastructure', name: 'HPE' },
+  'KXEARNINGSMENTIONLUCID': { sector: 'ai_infrastructure', name: 'Lucid' },
+  'KXEARNINGSMENTIONNIO': { sector: 'ai_infrastructure', name: 'Nio' },
+
+  // Grocery/Retail
+  'KXEARNINGSMENTIONACI': { sector: 'grocery', name: 'Albertsons' },
+  'KXEARNINGSMENTIONKR': { sector: 'grocery', name: 'Kroger' },
+  'KXEARNINGSMENTIONWMT': { sector: 'grocery', name: 'Walmart' },
+  'KXEARNINGSMENTIONCOST': { sector: 'grocery', name: 'Costco' },
+  'KXEARNINGSMENTIONTGT': { sector: 'grocery', name: 'Target' },
+  'KXEARNINGSMENTIONHD': { sector: 'grocery', name: 'Home Depot' },
+  'KXEARNINGSMENTIONPG': { sector: 'grocery', name: 'P&G' },
+  'KXEARNINGSMENTIONCBRL': { sector: 'grocery', name: 'Cracker Barrel' },
+  'KXEARNINGSMENTIONCMG': { sector: 'grocery', name: 'Chipotle' },
+
+  // Fintech/Finance
+  'KXEARNINGSMENTIONJPM': { sector: 'fintech', name: 'JPMorgan' },
+  'KXEARNINGSMENTIONGS': { sector: 'fintech', name: 'Goldman Sachs' },
+  'KXEARNINGSMENTIONPYPL': { sector: 'fintech', name: 'PayPal' },
+  'KXEARNINGSMENTIONCOINBASE': { sector: 'fintech', name: 'Coinbase' },
+  'KXEARNINGSMENTIONV': { sector: 'fintech', name: 'Visa' },
+  'KXEARNINGSMENTIONAXP': { sector: 'fintech', name: 'American Express' },
+  'KXEARNINGSMENTIONHOOD': { sector: 'fintech', name: 'Robinhood' },
+
+  // Consumer Brands
+  'KXEARNINGSMENTIONNKE': { sector: 'grocery', name: 'Nike' },
+  'KXEARNINGSMENTIONPEP': { sector: 'grocery', name: 'PepsiCo' },
+  'KXEARNINGSMENTIONKO': { sector: 'grocery', name: 'Coca-Cola' },
+  'KXEARNINGSMENTIONCHWY': { sector: 'grocery', name: 'Chewy' },
+
+  // Airlines/Transport
+  'KXEARNINGSMENTIONDAL': { sector: 'fintech', name: 'Delta' },
+  'KXEARNINGSMENTIONAAL': { sector: 'fintech', name: 'American Airlines' },
+  'KXEARNINGSMENTIONUAL': { sector: 'fintech', name: 'United Airlines' },
+  'KXEARNINGSMENTIONFDX': { sector: 'fintech', name: 'FedEx' },
+
+  // Social/Entertainment
+  'KXEARNINGSMENTIONSNAP': { sector: 'ai_infrastructure', name: 'Snap' },
+  'KXEARNINGSMENTIONRDDT': { sector: 'ai_infrastructure', name: 'Reddit' },
+  'KXEARNINGSMENTIONROKU': { sector: 'ai_infrastructure', name: 'Roku' },
 };
 
 // =============================================================================
