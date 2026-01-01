@@ -115,11 +115,19 @@ function parseDate(dateStr: string): string {
 // 538 (FIVETHIRTYEIGHT)
 // =============================================================================
 
+// 2025+ polling focuses on approval ratings and generic ballot (no presidential election)
 const FIVETHIRTYEIGHT_URLS = {
-  pollsJson: 'https://projects.fivethirtyeight.com/polls/president-general/2024/national/polls.json',
-  averagesJson: 'https://projects.fivethirtyeight.com/polls/president-general/2024/national/polling-average.json',
-  approval: 'https://projects.fivethirtyeight.com/biden-approval-rating/polls.json',
-  genericBallot: 'https://projects.fivethirtyeight.com/polls/generic-ballot/2024/polls.json',
+  // Trump approval rating (active as of Jan 2025)
+  trumpApproval: 'https://projects.fivethirtyeight.com/polls/approval/donald-trump/polls.json',
+  trumpApprovalAvg: 'https://projects.fivethirtyeight.com/polls/approval/donald-trump/polling-average.json',
+  // Generic congressional ballot for 2026 midterms
+  genericBallot: 'https://projects.fivethirtyeight.com/polls/generic-ballot/polls.json',
+  genericBallotAvg: 'https://projects.fivethirtyeight.com/polls/generic-ballot/polling-average.json',
+  // State gubernatorial races (NJ, VA in 2025)
+  governorNJ: 'https://projects.fivethirtyeight.com/polls/governor/2025/new-jersey/polls.json',
+  governorVA: 'https://projects.fivethirtyeight.com/polls/governor/2025/virginia/polls.json',
+  // Legacy 2024 (for historical reference)
+  president2024: 'https://projects.fivethirtyeight.com/polls/president-general/2024/national/polling-average.json',
 };
 
 interface FiveThirtyEightPoll {
@@ -142,144 +150,171 @@ interface FiveThirtyEightAverage {
   pct_trend_adjusted: number;
 }
 
+interface FiveThirtyEightApproval {
+  date: string;
+  subgroup: string;
+  approve_estimate: number;
+  disapprove_estimate: number;
+}
+
 /**
  * Fetch polling data from FiveThirtyEight
+ * 2025+: Focuses on Trump approval and generic ballot
  */
 async function fetch538Data(): Promise<Partial<PollingData> | null> {
+  const approvalRatings: ApprovalRating[] = [];
+  let genericBallot: PollingAverage | undefined;
+
+  // Fetch Trump approval rating
   try {
-    // Try to fetch the polling average JSON
-    const response = await fetch(FIVETHIRTYEIGHT_URLS.averagesJson, {
+    const response = await fetch(FIVETHIRTYEIGHT_URLS.trumpApprovalAvg, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KalshiBot/1.0)' },
     });
 
-    if (!response.ok) {
-      logger.debug(`538 averages fetch failed: ${response.status}`);
-      return null;
+    if (response.ok) {
+      const data = await response.json() as FiveThirtyEightApproval[];
+
+      if (Array.isArray(data) && data.length > 0) {
+        // Get most recent "All polls" entry
+        const allPolls = data.filter(d => d.subgroup === 'All polls' || d.subgroup === 'Adults');
+        const latest = allPolls.sort((a, b) => b.date.localeCompare(a.date))[0];
+
+        if (latest) {
+          approvalRatings.push({
+            politician: 'Donald Trump',
+            office: 'President',
+            approve: latest.approve_estimate,
+            disapprove: latest.disapprove_estimate,
+            netApproval: latest.approve_estimate - latest.disapprove_estimate,
+            asOf: parseDate(latest.date),
+            source: 'FiveThirtyEight',
+          });
+          logger.debug(`538 Trump approval: ${latest.approve_estimate.toFixed(1)}% approve`);
+        }
+      }
     }
-
-    const data = await response.json() as FiveThirtyEightAverage[];
-
-    if (!Array.isArray(data) || data.length === 0) {
-      return null;
-    }
-
-    // Get the most recent date
-    const latestDate = data.reduce((max, d) => d.date > max ? d.date : max, '');
-    const latestData = data.filter(d => d.date === latestDate);
-
-    // Build candidate averages
-    const candidates: Record<string, number> = {};
-    for (const entry of latestData) {
-      candidates[entry.candidate] = entry.pct_estimate;
-    }
-
-    // Find leader
-    const sorted = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
-    const leader = sorted[0]?.[0] ?? '';
-    const spread = sorted.length >= 2 ? sorted[0][1] - sorted[1][1] : 0;
-
-    const presidentialAverage: PollingAverage = {
-      race: 'President 2024',
-      raceType: 'president',
-      asOf: parseDate(latestDate),
-      candidates,
-      spread,
-      leader,
-      source: 'FiveThirtyEight',
-    };
-
-    return {
-      presidentialAverage,
-      sources: ['FiveThirtyEight'],
-      lastUpdated: new Date().toISOString(),
-    };
   } catch (error) {
-    logger.debug(`538 fetch error: ${error}`);
+    logger.debug(`538 Trump approval fetch error: ${error}`);
+  }
+
+  // Fetch generic ballot
+  try {
+    const response = await fetch(FIVETHIRTYEIGHT_URLS.genericBallotAvg, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KalshiBot/1.0)' },
+    });
+
+    if (response.ok) {
+      const data = await response.json() as FiveThirtyEightAverage[];
+
+      if (Array.isArray(data) && data.length > 0) {
+        const latestDate = data.reduce((max, d) => d.date > max ? d.date : max, '');
+        const latestData = data.filter(d => d.date === latestDate);
+
+        const candidates: Record<string, number> = {};
+        for (const entry of latestData) {
+          candidates[entry.candidate] = entry.pct_estimate;
+        }
+
+        const sorted = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
+        const leader = sorted[0]?.[0] ?? '';
+        const spread = sorted.length >= 2 ? sorted[0][1] - sorted[1][1] : 0;
+
+        genericBallot = {
+          race: 'Generic Congressional Ballot',
+          raceType: 'house',
+          asOf: parseDate(latestDate),
+          candidates,
+          spread,
+          leader,
+          source: 'FiveThirtyEight',
+        };
+        logger.debug(`538 generic ballot: ${leader} +${spread.toFixed(1)}`);
+      }
+    }
+  } catch (error) {
+    logger.debug(`538 generic ballot fetch error: ${error}`);
+  }
+
+  if (approvalRatings.length === 0 && !genericBallot) {
     return null;
   }
+
+  return {
+    approvalRatings: approvalRatings.length > 0 ? approvalRatings : undefined,
+    genericBallot,
+    sources: ['FiveThirtyEight'],
+    lastUpdated: new Date().toISOString(),
+  };
 }
 
 // =============================================================================
 // REALCLEARPOLITICS
 // =============================================================================
 
+// 2025+ RCP URLs - approval ratings and generic ballot
 const RCP_URLS = {
-  president: 'https://www.realclearpolling.com/polls/president/general/2024/trump-vs-harris',
-  approval: 'https://www.realclearpolling.com/polls/approval/joe-biden',
-  genericBallot: 'https://www.realclearpolling.com/polls/other/2024-generic-congressional-vote',
-  senateOverview: 'https://www.realclearpolling.com/elections/senate/2024',
+  trumpApproval: 'https://www.realclearpolling.com/polls/approval/donald-trump',
+  genericBallot: 'https://www.realclearpolling.com/polls/other/generic-congressional-vote',
+  senateOverview: 'https://www.realclearpolling.com/elections/senate/2026',
+  // 2025 gubernatorial races
+  governorNJ: 'https://www.realclearpolling.com/elections/governor/2025/new-jersey',
+  governorVA: 'https://www.realclearpolling.com/elections/governor/2025/virginia',
 };
 
 /**
  * Fetch polling averages from RealClearPolitics
+ * 2025+: Focuses on Trump approval rating
  * Note: RCP doesn't have a public API, so we scrape the page
  */
 async function fetchRCPData(): Promise<Partial<PollingData> | null> {
+  const approvalRatings: ApprovalRating[] = [];
+
+  // Fetch Trump approval
   try {
-    const response = await fetch(RCP_URLS.president, {
+    const response = await fetch(RCP_URLS.trumpApproval, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
     });
 
-    if (!response.ok) {
-      logger.debug(`RCP fetch failed: ${response.status}`);
-      return null;
+    if (response.ok) {
+      const html = await response.text();
+
+      // Look for approval/disapproval percentages
+      // RCP format varies, try multiple patterns
+      const approveMatch = html.match(/(?:Approve|Approval)[:\s]*(\d+\.?\d*)\s*%?/i);
+      const disapproveMatch = html.match(/(?:Disapprove|Disapproval)[:\s]*(\d+\.?\d*)\s*%?/i);
+
+      if (approveMatch && disapproveMatch) {
+        const approve = parseFloat(approveMatch[1]);
+        const disapprove = parseFloat(disapproveMatch[1]);
+
+        approvalRatings.push({
+          politician: 'Donald Trump',
+          office: 'President',
+          approve,
+          disapprove,
+          netApproval: approve - disapprove,
+          asOf: new Date().toISOString().split('T')[0],
+          source: 'RealClearPolitics',
+        });
+        logger.debug(`RCP Trump approval: ${approve}% approve, ${disapprove}% disapprove`);
+      }
     }
-
-    const html = await response.text();
-
-    // Extract RCP Average from the page
-    // Look for patterns like "Trump 48.2, Harris 46.8" or similar
-    const candidates: Record<string, number> = {};
-
-    // Try to find Trump percentage
-    const trumpMatch = html.match(/Trump[:\s]+(\d+\.?\d*)/i);
-    if (trumpMatch) {
-      candidates['Trump'] = parseFloat(trumpMatch[1]);
-    }
-
-    // Try to find Harris percentage
-    const harrisMatch = html.match(/Harris[:\s]+(\d+\.?\d*)/i);
-    if (harrisMatch) {
-      candidates['Harris'] = parseFloat(harrisMatch[1]);
-    }
-
-    // Try to find Biden percentage (for approval or old races)
-    const bidenMatch = html.match(/Biden[:\s]+(\d+\.?\d*)/i);
-    if (bidenMatch && !harrisMatch) {
-      candidates['Biden'] = parseFloat(bidenMatch[1]);
-    }
-
-    if (Object.keys(candidates).length < 2) {
-      logger.debug('RCP: Could not extract candidate percentages');
-      return null;
-    }
-
-    const sorted = Object.entries(candidates).sort((a, b) => b[1] - a[1]);
-    const leader = sorted[0][0];
-    const spread = sorted[0][1] - sorted[1][1];
-
-    const presidentialAverage: PollingAverage = {
-      race: 'President 2024',
-      raceType: 'president',
-      asOf: new Date().toISOString().split('T')[0],
-      candidates,
-      spread,
-      leader,
-      source: 'RealClearPolitics',
-    };
-
-    return {
-      presidentialAverage,
-      sources: ['RealClearPolitics'],
-      lastUpdated: new Date().toISOString(),
-    };
   } catch (error) {
-    logger.debug(`RCP fetch error: ${error}`);
+    logger.debug(`RCP approval fetch error: ${error}`);
+  }
+
+  if (approvalRatings.length === 0) {
     return null;
   }
+
+  return {
+    approvalRatings,
+    sources: ['RealClearPolitics'],
+    lastUpdated: new Date().toISOString(),
+  };
 }
 
 // =============================================================================
