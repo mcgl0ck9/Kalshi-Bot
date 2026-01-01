@@ -611,6 +611,44 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       logger.warn(`  CDC measles edge detection failed: ${error}`);
     }
 
+    // 6.5.11: Earnings Call Keyword Edge Detection
+    logger.info('  Checking earnings call keyword edges...');
+    try {
+      const { findEarningsEdges } = await import('./edge/earnings-edge.js');
+      // Pass headlines for context adjustment
+      const headlines = articles.map(a => a.title ?? '').filter(t => t.length > 0);
+      const earningsEdges = await findEarningsEdges(headlines);
+
+      if (earningsEdges.length > 0) {
+        logger.success(`  ${earningsEdges.length} earnings call keyword edges found`);
+
+        for (const edge of earningsEdges.slice(0, 5)) {
+          logger.info(`    📊 ${edge.company} "${edge.keyword}": ${edge.direction} (${(edge.edge * 100).toFixed(1)}% edge)`);
+
+          // Add to opportunities
+          opportunities.push({
+            market: edge.market,
+            source: 'earnings',
+            edge: Math.abs(edge.edge),
+            confidence: edge.confidence,
+            urgency: edge.signalStrength === 'critical' ? 'critical' :
+                     edge.signalStrength === 'actionable' ? 'standard' : 'fyi',
+            direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+            signals: {
+              earnings: {
+                company: edge.company,
+                keyword: edge.keyword,
+                impliedProbability: edge.impliedProbability,
+                reasoning: edge.reasoning,
+              },
+            },
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn(`  Earnings call edge detection failed: ${error}`);
+    }
+
     // ========== STEP 7: COMBINE SIGNALS ==========
     logger.step(7, 'Combining signals for final opportunities...');
 

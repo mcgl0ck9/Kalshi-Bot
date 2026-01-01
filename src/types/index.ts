@@ -75,7 +75,7 @@ export interface SentimentEdge {
 
 export interface EdgeOpportunity {
   market: Market;
-  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles';
+  source: 'cross-platform' | 'sentiment' | 'whale' | 'combined' | 'measles' | 'earnings';
   edge: number;
   confidence: number;
   urgency: 'critical' | 'standard' | 'fyi';
@@ -110,6 +110,13 @@ export interface EdgeOpportunity {
       currentCases: number;
       threshold: number;
       projectedYearEnd: number;
+    };
+    // Earnings call keyword analysis
+    earnings?: {
+      company: string;
+      keyword: string;
+      impliedProbability: number;
+      reasoning: string;
     };
   };
   sizing?: PositionSizing;

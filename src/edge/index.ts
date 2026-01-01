@@ -14,6 +14,7 @@
  * - Enhanced sports edge (injuries + weather + sharp/square)
  * - City weather edge (NOAA climate normals)
  * - CDC Measles edge (case count projections)
+ * - Earnings call keyword edge (mention markets)
  * - New market scanner
  * - Calibration tracking
  *
@@ -28,6 +29,7 @@
  * 8. Enhanced Sports Edge - Composite signal (sharp books + injuries + weather)
  * 9. Fed Speech Keywords - Historical transcript word frequency vs market prices
  * 10. CDC Measles - Weekly case count trajectory vs threshold markets
+ * 11. Earnings Call Keywords - Company-specific keyword probability vs market prices
  *
  * SKIPPED SIGNALS (failed adversarial testing):
  * - Simple FedWatch arbitrage (too noisy, other traders see it too)
@@ -49,3 +51,4 @@ export * from './polling-edge.js';
 export * from './enhanced-sports-edge.js';
 export * from './city-weather-edge.js';
 export * from './measles-edge.js';
+export * from './earnings-edge.js';
