@@ -690,6 +690,368 @@ export function findSportsEdges(
 /**
  * Format sports edges report
  */
+// =============================================================================
+// PLAYER PROPS
+// =============================================================================
+
+export interface PlayerProp {
+  gameId: string;
+  sport: string;
+  playerName: string;
+  team: string;
+  propType: string;        // e.g., 'player_pass_tds', 'player_rush_yds'
+  propLabel: string;       // Human readable: 'Passing TDs', 'Rushing Yards'
+  line: number;            // The over/under line (e.g., 1.5 TDs, 74.5 yards)
+  overPrice: number;       // American odds for over
+  underPrice: number;      // American odds for under
+  overProb: number;        // Implied probability for over
+  underProb: number;       // Implied probability for under
+  bookmaker: string;
+  lastUpdate: string;
+}
+
+export interface PlayerPropEdge {
+  kalshiMarket: Market;
+  playerProp: PlayerProp;
+  kalshiPrice: number;
+  consensusProb: number;
+  edge: number;
+  direction: 'buy_yes' | 'buy_no';
+  confidence: number;
+  reasoning: string;
+}
+
+// Player prop market types supported by The Odds API
+const PLAYER_PROP_MARKETS: Record<string, string[]> = {
+  nfl: [
+    'player_pass_tds',
+    'player_pass_yds',
+    'player_rush_yds',
+    'player_receptions',
+    'player_reception_yds',
+    'player_anytime_td',
+  ],
+  nba: [
+    'player_points',
+    'player_rebounds',
+    'player_assists',
+    'player_threes',
+    'player_blocks',
+    'player_steals',
+    'player_points_rebounds_assists',
+  ],
+  mlb: [
+    'batter_hits',
+    'batter_total_bases',
+    'batter_rbis',
+    'batter_runs_scored',
+    'batter_home_runs',
+    'pitcher_strikeouts',
+  ],
+  nhl: [
+    'player_points',
+    'player_shots_on_goal',
+    'player_goals',
+    'player_assists',
+  ],
+};
+
+// Human-readable labels for prop types
+const PROP_LABELS: Record<string, string> = {
+  player_pass_tds: 'Passing TDs',
+  player_pass_yds: 'Passing Yards',
+  player_rush_yds: 'Rushing Yards',
+  player_receptions: 'Receptions',
+  player_reception_yds: 'Receiving Yards',
+  player_anytime_td: 'Anytime TD',
+  player_points: 'Points',
+  player_rebounds: 'Rebounds',
+  player_assists: 'Assists',
+  player_threes: '3-Pointers',
+  player_blocks: 'Blocks',
+  player_steals: 'Steals',
+  player_points_rebounds_assists: 'PTS+REB+AST',
+  batter_hits: 'Hits',
+  batter_total_bases: 'Total Bases',
+  batter_rbis: 'RBIs',
+  batter_runs_scored: 'Runs',
+  batter_home_runs: 'Home Runs',
+  pitcher_strikeouts: 'Strikeouts',
+  player_shots_on_goal: 'Shots on Goal',
+  player_goals: 'Goals',
+};
+
+/**
+ * Fetch player props for upcoming games in a sport
+ * Note: Player props require event IDs, so we first fetch events then props
+ */
+export async function fetchPlayerProps(sport: keyof typeof SPORT_KEYS): Promise<PlayerProp[]> {
+  if (!ODDS_API_KEY) {
+    return [];
+  }
+
+  const sportKey = SPORT_KEYS[sport];
+  const propMarkets = PLAYER_PROP_MARKETS[sport];
+
+  if (!sportKey || !propMarkets) {
+    return [];
+  }
+
+  try {
+    // First, fetch event IDs for this sport
+    const eventsUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/events?apiKey=${ODDS_API_KEY}`;
+    const eventsResponse = await fetch(eventsUrl);
+
+    if (!eventsResponse.ok) {
+      logger.debug(`No events found for ${sport} player props`);
+      return [];
+    }
+
+    const events = await eventsResponse.json() as Array<{
+      id: string;
+      sport_key: string;
+      home_team: string;
+      away_team: string;
+      commence_time: string;
+    }>;
+
+    if (events.length === 0) {
+      return [];
+    }
+
+    // Limit to first 3 games to conserve API calls
+    const allProps: PlayerProp[] = [];
+    const marketsParam = propMarkets.join(',');
+
+    for (const event of events.slice(0, 3)) {
+      try {
+        const propsUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${event.id}/odds?` +
+          `apiKey=${ODDS_API_KEY}&regions=us&markets=${marketsParam}&oddsFormat=american`;
+
+        const propsResponse = await fetch(propsUrl);
+
+        if (!propsResponse.ok) {
+          continue;
+        }
+
+        const propsData = await propsResponse.json() as {
+          id: string;
+          bookmakers: Array<{
+            key: string;
+            last_update: string;
+            markets: Array<{
+              key: string;
+              outcomes: Array<{
+                name: string;
+                description: string;
+                price: number;
+                point?: number;
+              }>;
+            }>;
+          }>;
+        };
+
+        // Parse player props from each bookmaker
+        for (const bookmaker of propsData.bookmakers) {
+          for (const market of bookmaker.markets) {
+            const propType = market.key;
+
+            // Group outcomes by player (over/under pairs)
+            const playerOutcomes = new Map<string, { over?: typeof market.outcomes[0]; under?: typeof market.outcomes[0] }>();
+
+            for (const outcome of market.outcomes) {
+              const playerName = outcome.description || outcome.name;
+              const existing = playerOutcomes.get(playerName) || {};
+
+              if (outcome.name === 'Over') {
+                existing.over = outcome;
+              } else if (outcome.name === 'Under') {
+                existing.under = outcome;
+              }
+
+              playerOutcomes.set(playerName, existing);
+            }
+
+            // Convert to PlayerProp objects
+            for (const [playerName, outcomes] of playerOutcomes) {
+              if (!outcomes.over || !outcomes.under) continue;
+
+              const overProb = americanOddsToProb(outcomes.over.price);
+              const underProb = americanOddsToProb(outcomes.under.price);
+
+              // Determine team from player name (rough heuristic)
+              const team = event.home_team; // Default, would need roster data for accuracy
+
+              allProps.push({
+                gameId: event.id,
+                sport,
+                playerName,
+                team,
+                propType,
+                propLabel: PROP_LABELS[propType] || propType,
+                line: outcomes.over.point ?? 0,
+                overPrice: outcomes.over.price,
+                underPrice: outcomes.under.price,
+                overProb,
+                underProb,
+                bookmaker: bookmaker.key,
+                lastUpdate: bookmaker.last_update,
+              });
+            }
+          }
+        }
+
+        // Small delay between requests
+        await new Promise(r => setTimeout(r, 200));
+
+      } catch (err) {
+        logger.debug(`Error fetching props for event ${event.id}: ${err}`);
+      }
+    }
+
+    logger.info(`  Fetched ${allProps.length} player props for ${sport}`);
+    return allProps;
+
+  } catch (error) {
+    logger.debug(`Player props fetch error for ${sport}: ${error}`);
+    return [];
+  }
+}
+
+/**
+ * Fetch all player props across major sports
+ */
+export async function fetchAllPlayerProps(): Promise<Map<string, PlayerProp[]>> {
+  const allProps = new Map<string, PlayerProp[]>();
+
+  const sports: Array<keyof typeof SPORT_KEYS> = ['nfl', 'nba', 'mlb', 'nhl'];
+
+  for (const sport of sports) {
+    const props = await fetchPlayerProps(sport);
+    if (props.length > 0) {
+      allProps.set(sport, props);
+    }
+  }
+
+  return allProps;
+}
+
+/**
+ * Normalize player name for matching
+ */
+function normalizePlayerName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[.']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Match Kalshi player prop markets to sportsbook props
+ */
+export function findPlayerPropEdges(
+  kalshiMarkets: Market[],
+  playerProps: Map<string, PlayerProp[]>,
+  minEdge: number = 0.05
+): PlayerPropEdge[] {
+  const edges: PlayerPropEdge[] = [];
+
+  // Filter to player prop markets (usually have player names + stats)
+  const propMarkets = kalshiMarkets.filter(m => {
+    const title = (m.title ?? '').toLowerCase();
+    return (
+      title.includes('yards') ||
+      title.includes('touchdowns') ||
+      title.includes('points') ||
+      title.includes('rebounds') ||
+      title.includes('assists') ||
+      title.includes('receptions') ||
+      title.includes('strikeouts') ||
+      title.includes('hits') ||
+      title.includes('goals') ||
+      title.includes('3-pointers') ||
+      title.includes('threes')
+    );
+  });
+
+  if (propMarkets.length === 0) {
+    return [];
+  }
+
+  logger.debug(`Checking ${propMarkets.length} Kalshi player prop markets`);
+
+  for (const market of propMarkets) {
+    const title = (market.title ?? '').toLowerCase();
+
+    // Try to match to player props
+    for (const [sport, props] of playerProps) {
+      for (const prop of props) {
+        const playerNorm = normalizePlayerName(prop.playerName);
+
+        // Check if market mentions this player
+        if (!title.includes(playerNorm)) {
+          // Try first/last name separately
+          const nameParts = playerNorm.split(' ');
+          const hasName = nameParts.some(part => part.length > 2 && title.includes(part));
+          if (!hasName) continue;
+        }
+
+        // Check if prop type matches
+        const propLabel = prop.propLabel.toLowerCase();
+        if (!title.includes(propLabel.split(' ')[0])) continue;
+
+        // Determine if Kalshi market is over or under
+        const isOver = title.includes('over') || title.includes('more than') || title.includes('above');
+        const isUnder = title.includes('under') || title.includes('fewer than') || title.includes('below');
+
+        if (!isOver && !isUnder) continue;
+
+        // Get consensus probability
+        const consensusProb = isOver ? prop.overProb : prop.underProb;
+        const kalshiPrice = market.price;
+
+        // Calculate edge
+        const edge = consensusProb - kalshiPrice;
+
+        if (Math.abs(edge) < minEdge) continue;
+
+        const direction = edge > 0 ? 'buy_yes' : 'buy_no';
+        const confidence = Math.min(0.6 + Math.abs(edge) * 2, 0.85);
+
+        edges.push({
+          kalshiMarket: market,
+          playerProp: prop,
+          kalshiPrice,
+          consensusProb,
+          edge,
+          direction,
+          confidence,
+          reasoning: `${prop.playerName} ${prop.propLabel} ${isOver ? 'Over' : 'Under'} ${prop.line}: ` +
+            `Sportsbooks ${(consensusProb * 100).toFixed(0)}% vs Kalshi ${(kalshiPrice * 100).toFixed(0)}%`,
+        });
+      }
+    }
+  }
+
+  // Sort by edge and deduplicate by market
+  edges.sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
+
+  // Keep best edge per market
+  const bestPerMarket = new Map<string, PlayerPropEdge>();
+  for (const edge of edges) {
+    const key = edge.kalshiMarket.id;
+    if (!bestPerMarket.has(key) || Math.abs(edge.edge) > Math.abs(bestPerMarket.get(key)!.edge)) {
+      bestPerMarket.set(key, edge);
+    }
+  }
+
+  const dedupedEdges = Array.from(bestPerMarket.values());
+  logger.info(`Found ${dedupedEdges.length} player prop edges`);
+
+  return dedupedEdges;
+}
+
 export function formatSportsEdgesReport(edges: SportsEdgeSignal[]): string {
   if (edges.length === 0) {
     return 'No sports edges found vs sportsbook consensus.';

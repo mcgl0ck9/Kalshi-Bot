@@ -11,6 +11,7 @@ export interface Market {
   id: string;
   ticker?: string;
   title: string;
+  subtitle?: string;       // Kalshi outcome description (e.g., "$100K or above")
   description?: string;
   category: MarketCategory;
   price: number;           // YES price as decimal (0-1)
@@ -165,6 +166,26 @@ export interface EdgeOpportunity {
       reviewCount?: number;
       buffer: number;  // currentScore - threshold
       sources: string[];
+    };
+    // Player prop edge (individual player stats)
+    playerProp?: {
+      playerName: string;
+      propType: string;      // 'Passing Yards', 'Points', etc.
+      line: number;          // The over/under line
+      isOver: boolean;
+      consensusProb: number;
+      reasoning: string;
+    };
+    // Line movement edge (steam moves, opening value)
+    lineMove?: {
+      moveType: 'steam' | 'reverse' | 'drift' | 'opening_value';
+      direction: 'home' | 'away';
+      magnitude: number;
+      timeframeMinutes: number;
+      previousProb: number;
+      currentProb: number;
+      openingProb?: number;
+      reasoning: string;
     };
   };
   sizing?: PositionSizing;

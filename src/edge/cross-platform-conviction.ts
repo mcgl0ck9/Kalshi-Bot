@@ -140,10 +140,14 @@ export async function findCrossPlatformConvictionEdges(
     if (edge < EDGE_THRESHOLDS.minimum) continue;
 
     // Calculate confidence based on conviction strength and edge size
-    let confidence = 0.5;
-    if (signal.convictionStrength >= 0.8) confidence += 0.15;
+    // Boosted base from 0.50 to 0.55 and increased conviction bonuses
+    let confidence = 0.55;
+    if (signal.convictionStrength >= 0.7) confidence += 0.10;  // Was 0.8
+    if (signal.convictionStrength >= 0.8) confidence += 0.10;  // Additional boost at 0.8
     if (signal.convictionStrength >= 0.9) confidence += 0.10;
-    if (edge >= 0.10) confidence += 0.10;
+    if (edge >= 0.08) confidence += 0.10;  // Was 0.10 edge threshold
+    if (edge >= 0.15) confidence += 0.05;  // Bonus for large edge
+    if (signal.topWhalePositions.length >= 3) confidence += 0.05;  // Was 5
     if (signal.topWhalePositions.length >= 5) confidence += 0.05;
     confidence = Math.min(confidence, 0.90);
 

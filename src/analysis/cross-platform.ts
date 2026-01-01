@@ -559,27 +559,129 @@ export function calculateTitleSimilarity(title1: string, title2: string): number
 // =============================================================================
 
 /**
+ * Check if a market title looks like a parlay/combo (multiple outcomes)
+ */
+function isParlayMarket(title: string): boolean {
+  if (!title) return true;
+
+  // Parlay patterns: "yes Team1,yes Team2,yes Team3" or multiple outcomes
+  const yesNoCount = (title.match(/\b(yes|no)\s/gi) || []).length;
+  if (yesNoCount > 1) return true;
+
+  // Multiple comma-separated items that look like outcomes
+  const commaItems = title.split(',').length;
+  if (commaItems > 2) return true;
+
+  // Contains player stats patterns like "Player: 10+"
+  const playerStatMatches = (title.match(/\w+:\s*\d+\+/g) || []).length;
+  if (playerStatMatches > 1) return true;
+
+  return false;
+}
+
+/**
+ * Extract a simplified question from market title
+ * Removes "Will", "?", year prefixes, etc.
+ */
+function simplifyTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/^will\s+/i, '')
+    .replace(/\?+$/, '')
+    .replace(/\s+in\s+202\d/, '')
+    .replace(/\s+by\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|december|january|february)\s*\d*/gi, '')
+    .replace(/\s+before\s+202\d/, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Match markets between Kalshi and Polymarket
  */
 export function matchMarketsCrossPlatform(
   kalshiMarkets: Market[],
   polymarketMarkets: Market[],
-  minSimilarity: number = 0.35  // was 0.5 - lowered for more matches
+  minSimilarity: number = 0.25  // Lowered further for more matches
 ): CrossPlatformMatch[] {
   const matches: CrossPlatformMatch[] = [];
   const usedPolymarketIds = new Set<string>();
 
-  for (const kalshi of kalshiMarkets) {
-    if (!kalshi.title || !kalshi.price) continue;
+  // Filter out parlay markets from Kalshi
+  const singleKalshi = kalshiMarkets.filter(m => {
+    if (!m.title || !m.price) return false;
+    if (m.price <= 0 || m.price >= 1) return false;
+    return !isParlayMarket(m.title);
+  });
+
+  const validPoly = polymarketMarkets.filter(m => m.title && m.price && m.price > 0 && m.price < 1);
+
+  logger.info(`Cross-platform: ${singleKalshi.length} single Kalshi markets, ${validPoly.length} Polymarket`);
+
+  if (singleKalshi.length === 0) {
+    logger.debug('No single Kalshi markets found (all are parlays/combos)');
+    return [];
+  }
+
+  // Build keyword index for Polymarket for faster matching
+  const polyByKeyword = new Map<string, Market[]>();
+  const keywords = ['trump', 'biden', 'bitcoin', 'btc', 'ethereum', 'fed', 'rate', 'ukraine', 'russia',
+    'china', 'taiwan', 'israel', 'gaza', 'election', 'nfl', 'nba', 'super bowl', 'oscar', 'grammy',
+    'inflation', 'recession', 'ai', 'openai', 'tesla', 'musk', 'apple', 'google', 'amazon', 'meta',
+    'avatar', 'movie', 'box office', 'hottest', 'temperature', 'climate'];
+
+  for (const poly of validPoly) {
+    const titleLower = poly.title?.toLowerCase() ?? '';
+    for (const kw of keywords) {
+      if (titleLower.includes(kw)) {
+        if (!polyByKeyword.has(kw)) polyByKeyword.set(kw, []);
+        polyByKeyword.get(kw)!.push(poly);
+      }
+    }
+  }
+
+  // Track near-misses for debugging
+  const nearMisses: Array<{ kalshi: string; poly: string; score: number }> = [];
+  let parlaysSkipped = 0;
+
+  for (const kalshi of singleKalshi) {
+    const kalshiTitle = kalshi.title ?? '';
+    const kalshiLower = kalshiTitle.toLowerCase();
+
+    // Find candidate Polymarket markets by keyword overlap
+    const candidatePoly = new Set<Market>();
+
+    for (const kw of keywords) {
+      if (kalshiLower.includes(kw)) {
+        const polyMatches = polyByKeyword.get(kw) || [];
+        for (const p of polyMatches) {
+          if (!usedPolymarketIds.has(p.id)) {
+            candidatePoly.add(p);
+          }
+        }
+      }
+    }
+
+    // If no keyword matches, check all Polymarket markets
+    const toCheck = candidatePoly.size > 0 ? [...candidatePoly] : validPoly.filter(p => !usedPolymarketIds.has(p.id));
 
     let bestMatch: Market | null = null;
     let bestSimilarity = minSimilarity;
 
-    for (const poly of polymarketMarkets) {
+    for (const poly of toCheck) {
       if (usedPolymarketIds.has(poly.id)) continue;
       if (!poly.title || !poly.price) continue;
 
-      const similarity = calculateTitleSimilarity(kalshi.title, poly.title);
+      const similarity = calculateTitleSimilarity(kalshiTitle, poly.title);
+
+      // Track near-misses
+      if (similarity >= 0.15 && similarity < minSimilarity && nearMisses.length < 10) {
+        nearMisses.push({
+          kalshi: kalshiTitle.slice(0, 50),
+          poly: poly.title.slice(0, 50),
+          score: similarity,
+        });
+      }
 
       if (similarity > bestSimilarity) {
         bestSimilarity = similarity;
@@ -603,6 +705,15 @@ export function matchMarketsCrossPlatform(
         polymarketMoreBullish: priceDiff > 0,
         category: kalshi.category ?? bestMatch.category ?? 'other',
       });
+    }
+  }
+
+  // Log near-misses if few matches found
+  if (matches.length < 3 && nearMisses.length > 0) {
+    logger.info(`Cross-platform near-misses (top 5):`);
+    nearMisses.sort((a, b) => b.score - a.score);
+    for (const nm of nearMisses.slice(0, 5)) {
+      logger.info(`  ${(nm.score * 100).toFixed(0)}%: "${nm.kalshi}" <-> "${nm.poly}"`);
     }
   }
 

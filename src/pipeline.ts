@@ -23,14 +23,14 @@
  */
 
 import type { EdgeOpportunity, CrossPlatformMatch, Market, TopicSentiment, WhaleSignal, PositionSizing, MacroEdgeSignal } from './types/index.js';
-import { logger, delay } from './utils/index.js';
+import { logger, delay, recordPrices, findMovingMarkets, formatPriceHistoryReport, getHistoryStats, forceSave as saveHistoryData } from './utils/index.js';
 import { BANKROLL, CATEGORY_PRIORITIES, MIN_EDGE_THRESHOLD, ODDS_API_KEY } from './config.js';
 
 // Exchanges
-import { fetchKalshiMarkets, fetchPolymarketMarkets, fetchKalshiSportsMarkets, fetchAllKalshiMarkets, fetchKalshiWeatherMarkets } from './exchanges/index.js';
+import { fetchKalshiMarkets, fetchPolymarketMarkets, fetchKalshiSportsMarkets, fetchAllKalshiMarkets, fetchKalshiWeatherMarkets, fetchMatchableKalshiMarkets } from './exchanges/index.js';
 
 // Fetchers
-import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges } from './fetchers/index.js';
+import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges, fetchAllPlayerProps, findPlayerPropEdges } from './fetchers/index.js';
 import { fetchFedWatch } from './fetchers/economic/fed-watch.js';
 import { fetchPolymarketMarketsWithPrices } from './fetchers/polymarket-onchain.js';
 
@@ -102,6 +102,8 @@ export interface PipelineResult {
     optionsImpliedSignals: number;
     enhancedSportsEdges: number;
     newMarketsDetected: number;
+    playerPropEdges: number;
+    lineMoveEdges: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -144,6 +146,8 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     optionsImpliedSignals: 0,
     enhancedSportsEdges: 0,
     newMarketsDetected: 0,
+    playerPropEdges: 0,
+    lineMoveEdges: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -195,6 +199,37 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     logger.success(`Kalshi: ${kalshiMarkets.length} markets ${kalshiBreakdown}`);
     logger.success(`Polymarket: ${polymarketMarkets.length} markets`);
 
+    // ========== STEP 1.5: RECORD PRICE HISTORY ==========
+    logger.step(1.5, 'Recording price history...');
+
+    // Record prices for all markets
+    const priceRecords = [
+      ...kalshiMarkets.map(m => ({
+        id: m.id,
+        platform: 'kalshi' as const,
+        title: m.title,
+        price: m.price,
+        volume: m.volume24h,
+      })),
+      ...polymarketMarkets.map(m => ({
+        id: m.id,
+        platform: 'polymarket' as const,
+        title: m.title,
+        price: m.price,
+        volume: m.volume24h,
+      })),
+    ];
+
+    recordPrices(priceRecords);
+    const historyStats = getHistoryStats();
+    logger.success(`Recorded ${priceRecords.length} prices (${historyStats.totalMarkets} markets tracked)`);
+
+    // Check for significant price movements
+    const movingMarkets = findMovingMarkets(0.08, 6); // 8%+ moves in last 6 hours
+    if (movingMarkets.length > 0) {
+      logger.info(`  📊 ${movingMarkets.length} markets with significant movement`);
+    }
+
     // ========== STEP 2: FETCH NEWS ==========
     logger.step(2, 'Fetching news for sentiment analysis...');
 
@@ -216,7 +251,11 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // ========== STEP 4: CROSS-PLATFORM DIVERGENCE ==========
     logger.step(4, 'Finding cross-platform divergences...');
 
-    const matches = matchMarketsCrossPlatform(kalshiMarkets, polymarketMarkets);
+    // Fetch matchable single-outcome markets from key series (not parlays)
+    const matchableKalshi = await fetchMatchableKalshiMarkets();
+    logger.info(`Fetched ${matchableKalshi.length} matchable Kalshi markets for cross-platform`);
+
+    const matches = matchMarketsCrossPlatform(matchableKalshi, polymarketMarkets);
     const divergent = getDivergentMarkets(matches, 0.05);
     allDivergences.push(...divergent);
     stats.divergencesFound = divergent.length;
@@ -299,10 +338,13 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     }
 
     // 6.5.3: Sports Odds Comparison (if API key configured)
+    // Declare sportsOdds at higher scope for use in line move detection
+    let sportsOdds: Map<string, import('./fetchers/sports-odds.js').SportOdds[]> = new Map();
+
     if (ODDS_API_KEY) {
       logger.info('  Fetching sports odds...');
       try {
-        const sportsOdds = await fetchAllSportsOdds();
+        sportsOdds = await fetchAllSportsOdds();
         let totalGames = 0;
         for (const [sport, games] of sportsOdds) {
           totalGames += games.length;
@@ -345,6 +387,119 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
         }
       } catch (error) {
         logger.warn(`  Sports odds fetch failed: ${error}`);
+      }
+
+      // 6.5.3a: Player Props Edge Detection
+      logger.info('  Fetching player props...');
+      try {
+        const playerPropsMap = await fetchAllPlayerProps();
+        let totalProps = 0;
+        for (const [sport, props] of playerPropsMap) {
+          totalProps += props.length;
+          if (props.length > 0) {
+            logger.info(`    ${sport.toUpperCase()}: ${props.length} player props`);
+          }
+        }
+
+        if (totalProps > 0) {
+          logger.success(`  ${totalProps} player props fetched`);
+
+          // Find edges between Kalshi player prop markets and sportsbook consensus
+          const playerPropEdges = findPlayerPropEdges(kalshiMarkets, playerPropsMap);
+          stats.playerPropEdges = playerPropEdges.length;
+
+          if (playerPropEdges.length > 0) {
+            logger.success(`  ${playerPropEdges.length} player prop edges found`);
+
+            // Log top edges for visibility
+            for (const edge of playerPropEdges.slice(0, 5)) {
+              const edgePct = (Math.abs(edge.edge) * 100).toFixed(1);
+              const dir = edge.direction === 'buy_yes' ? 'OVER' : 'UNDER';
+              logger.info(`    🎯 ${edge.playerProp.playerName} ${edge.playerProp.propLabel} ${dir} ${edge.playerProp.line}: ${edgePct}% edge`);
+            }
+
+            // Convert to opportunities
+            for (const edge of playerPropEdges.slice(0, 10)) {
+              const opp: EdgeOpportunity = {
+                market: edge.kalshiMarket,
+                source: 'sports',
+                edge: Math.abs(edge.edge),
+                confidence: edge.confidence,
+                urgency: Math.abs(edge.edge) > 0.10 ? 'critical' : Math.abs(edge.edge) > 0.05 ? 'standard' : 'fyi',
+                direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+                signals: {
+                  playerProp: {
+                    playerName: edge.playerProp.playerName,
+                    propType: edge.playerProp.propLabel,
+                    line: edge.playerProp.line,
+                    isOver: edge.direction === 'buy_yes',
+                    consensusProb: edge.consensusProb,
+                    reasoning: edge.reasoning,
+                  },
+                },
+              };
+              opp.sizing = calculateAdaptivePosition(bankroll, opp);
+              opportunities.push(opp);
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(`  Player props fetch failed: ${error}`);
+      }
+
+      // 6.5.3c: Line Movement Detection (steam moves, opening value)
+      logger.info('  Checking line movements...');
+      try {
+        const { recordAllLines, findLineMoveEdges, getLineTrackingStats } = await import('./edge/line-move-detector.js');
+
+        // Record current lines for future comparison
+        recordAllLines(sportsOdds);
+
+        // Detect line moves and find edges
+        const lineMoveEdges = findLineMoveEdges(kalshiMarkets, 0.03);
+        stats.lineMoveEdges = lineMoveEdges.length;
+
+        // Log tracking stats
+        const trackingStats = getLineTrackingStats();
+        logger.info(`    Tracking ${trackingStats.gamesTracked} games, ${trackingStats.totalSnapshots} snapshots`);
+
+        if (lineMoveEdges.length > 0) {
+          logger.success(`  ${lineMoveEdges.length} line move edges found`);
+
+          // Log top edges for visibility
+          for (const edge of lineMoveEdges.slice(0, 3)) {
+            const emoji = edge.lineMove.moveType === 'steam' ? '🔥' : '📊';
+            logger.info(`    ${emoji} ${edge.lineMove.awayTeam} @ ${edge.lineMove.homeTeam}: ${(edge.edge * 100).toFixed(1)}% edge`);
+          }
+
+          // Convert to opportunities
+          for (const edge of lineMoveEdges.slice(0, 5)) {
+            const opp: EdgeOpportunity = {
+              market: edge.kalshiMarket,
+              source: 'sports',
+              edge: Math.abs(edge.edge),
+              confidence: edge.confidence,
+              urgency: edge.lineMove.moveType === 'steam' ? 'critical' : edge.edge > 0.06 ? 'standard' : 'fyi',
+              direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
+              signals: {
+                lineMove: {
+                  moveType: edge.lineMove.moveType,
+                  direction: edge.lineMove.direction,
+                  magnitude: edge.lineMove.magnitude,
+                  timeframeMinutes: edge.lineMove.timeframeMinutes,
+                  previousProb: edge.lineMove.previousProb,
+                  currentProb: edge.lineMove.currentProb,
+                  openingProb: edge.lineMove.openingProb,
+                  reasoning: edge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      } catch (error) {
+        logger.warn(`  Line move detection failed: ${error}`);
       }
     }
 
@@ -509,6 +664,26 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Recency bias analysis failed: ${error}`);
+    }
+
+    // 6.5.5b: Whale Auto-Discovery (find profitable Polymarket traders)
+    logger.info('  Discovering profitable wallets...');
+    try {
+      const { discoverProfitableWallets, getWhaleDiscoveryStats } = await import('./fetchers/whale-discovery.js');
+
+      // Discover wallets with $50k+ profit
+      const discoveryResult = await discoverProfitableWallets(50000, 50);
+
+      if (discoveryResult.newWhales.length > 0) {
+        logger.success(`  Discovered ${discoveryResult.newWhales.length} new profitable wallets`);
+      }
+
+      // Log discovery stats
+      const stats = getWhaleDiscoveryStats();
+      logger.info(`    Tracking ${stats.totalTracked} wallets (${stats.highConfidenceCount} high-confidence)`);
+      logger.info(`    Total PnL tracked: $${(stats.totalPnlTracked / 1000000).toFixed(1)}M | Avg win rate: ${(stats.avgWinRate * 100).toFixed(0)}%`);
+    } catch (error) {
+      logger.warn(`  Whale discovery failed: ${error}`);
     }
 
     // 6.5.6: Cross-Platform Whale Conviction (Polymarket on-chain data)
@@ -700,6 +875,81 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  CDC measles edge detection failed: ${error}`);
+    }
+
+    // 6.5.10b: Health Trackers (Flu, COVID, Mpox)
+    logger.info('  Checking health market edges (flu/COVID/mpox)...');
+    try {
+      const { fetchAllHealthData, calculateDiseaseThresholdProbability } = await import('./fetchers/health-trackers.js');
+
+      // Fetch health data
+      const healthData = await fetchAllHealthData();
+      let healthEdgesFound = 0;
+
+      if (healthData.size > 0) {
+        logger.info(`    Tracking ${healthData.size} diseases`);
+
+        // Find health-related markets
+        const healthMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('flu') || title.includes('covid') ||
+                 title.includes('mpox') || title.includes('hospitalization') ||
+                 title.includes('pandemic') || title.includes('outbreak');
+        });
+
+        for (const market of healthMarkets) {
+          const title = market.title?.toLowerCase() ?? '';
+
+          // Determine which disease this market is about
+          let disease: 'flu' | 'covid' | 'mpox' | null = null;
+          if (title.includes('flu') || title.includes('influenza')) {
+            disease = 'flu';
+          } else if (title.includes('covid') || title.includes('coronavirus')) {
+            disease = 'covid';
+          } else if (title.includes('mpox') || title.includes('monkeypox')) {
+            disease = 'mpox';
+          }
+
+          if (!disease || !healthData.has(disease)) continue;
+
+          const data = healthData.get(disease)!;
+
+          // Extract threshold from market title
+          const thresholdMatch = title.match(/([\d,]+)\s*(cases|hospitalizations|deaths)?/);
+          if (!thresholdMatch) continue;
+
+          const threshold = parseInt(thresholdMatch[1].replace(/,/g, ''));
+          const thresholdType = (thresholdMatch[2] ?? 'cases') as 'cases' | 'hospitalizations';
+
+          // Calculate edge
+          const edgeResult = calculateDiseaseThresholdProbability(data, threshold, thresholdType);
+
+          const marketPrice = market.price ?? 0.5;
+          const edge = edgeResult.probability - marketPrice;
+
+          if (Math.abs(edge) >= 0.05) {
+            healthEdgesFound++;
+
+            opportunities.push({
+              market,
+              source: 'combined',
+              edge: Math.abs(edge),
+              confidence: edgeResult.confidence,
+              urgency: Math.abs(edge) > 0.15 ? 'critical' : Math.abs(edge) > 0.08 ? 'standard' : 'fyi',
+              direction: edge > 0 ? 'BUY YES' : 'BUY NO',
+              signals: {},
+            });
+
+            logger.info(`    ${disease.toUpperCase()}: ${(edge * 100).toFixed(1)}% edge on ${threshold.toLocaleString()} ${thresholdType}`);
+          }
+        }
+      }
+
+      if (healthEdgesFound > 0) {
+        logger.success(`  ${healthEdgesFound} health market edges found`);
+      }
+    } catch (error) {
+      logger.warn(`  Health tracker failed: ${error}`);
     }
 
     // 6.5.11: Earnings Call Keyword Edge Detection
@@ -1097,25 +1347,45 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     }
 
     // Filter out invalid opportunities before sorting
+    let filteredByPrice = 0;
+    let filteredByEdge = 0;
+    let filteredByConfidence = 0;
+
     const validOpportunities = opportunities.filter(opp => {
       const price = opp.market.price ?? 0;
       const edge = opp.edge ?? 0;
 
       // Must have valid price (not 0, not extreme)
-      if (price <= 0 || price >= 1) return false;
+      if (price <= 0 || price >= 1) {
+        filteredByPrice++;
+        return false;
+      }
 
-      // Must have reasonable edge (<50%)
-      if (edge > 0.50) return false;
+      // Edge cap depends on signal type
+      // Some signal types can have larger legitimate edges due to market structure
+      const isPlayerProp = opp.signals?.playerProp !== undefined;
+      const isSportsOdds = opp.signals?.sportsConsensus !== undefined || opp.signals?.enhancedSports !== undefined;
+      const isEarnings = opp.signals?.earnings !== undefined;
+      const isFedSpeech = opp.signals?.fedSpeech !== undefined;
+      const maxEdge = (isPlayerProp || isSportsOdds || isEarnings || isFedSpeech) ? 0.90 : 0.50;
 
-      // Must have minimum confidence
-      if (opp.confidence < 0.40) return false;
+      if (edge > maxEdge) {
+        filteredByEdge++;
+        return false;
+      }
+
+      // Lower confidence threshold to 35% (was 40%)
+      if (opp.confidence < 0.35) {
+        filteredByConfidence++;
+        return false;
+      }
 
       return true;
     });
 
     const filtered = opportunities.length - validOpportunities.length;
     if (filtered > 0) {
-      logger.debug(`Filtered ${filtered} invalid opportunities (bad price/edge/confidence)`);
+      logger.debug(`Filtered ${filtered} opportunities: ${filteredByPrice} bad price, ${filteredByEdge} edge too high, ${filteredByConfidence} low confidence`);
     }
 
     // Sort by edge magnitude and urgency (basic sort before ML)
@@ -1219,6 +1489,8 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
           if (opp.signals.optionsImplied) signalSources.push('options');
           if (opp.signals.enhancedSports) signalSources.push('enhanced-sports');
           if (opp.signals.newMarket) signalSources.push('new-market');
+          if (opp.signals.playerProp) signalSources.push('player-prop');
+          if (opp.signals.lineMove) signalSources.push('line-move');
           if (signalSources.length === 0) signalSources.push(opp.source);
 
           // Calculate our implied estimate based on direction and edge
@@ -1262,6 +1534,9 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
 
     // ========== COMPLETE ==========
     const duration = (Date.now() - startTime) / 1000;
+
+    // Save price history
+    saveHistoryData();
 
     logger.divider();
     logger.info(`Pipeline complete in ${duration.toFixed(1)}s`);

@@ -165,6 +165,20 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     } else {
       lines.push(`Score is BELOW threshold - unlikely to rise`);
     }
+  } else if (signals.playerProp) {
+    const pp = signals.playerProp;
+    lines.push(`${pp.playerName}: ${pp.propType} ${pp.isOver ? 'Over' : 'Under'} ${pp.line}`);
+    lines.push(`Sportsbooks: ${(pp.consensusProb * 100).toFixed(0)}% vs Kalshi price`);
+    lines.push(pp.reasoning);
+  } else if (signals.lineMove) {
+    const lm = signals.lineMove;
+    const moveEmoji = lm.moveType === 'steam' ? '🔥' : lm.moveType === 'opening_value' ? '📊' : '📈';
+    lines.push(`${moveEmoji} ${lm.moveType.toUpperCase()} MOVE toward ${lm.direction}`);
+    lines.push(`Line: ${(lm.previousProb * 100).toFixed(0)}% → ${(lm.currentProb * 100).toFixed(0)}% (${lm.timeframeMinutes} min)`);
+    if (lm.openingProb) {
+      lines.push(`Opener: ${(lm.openingProb * 100).toFixed(0)}%`);
+    }
+    lines.push(lm.reasoning);
   } else {
     lines.push(`Confidence: ${(confidence * 100).toFixed(0)}%`);
   }

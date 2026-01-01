@@ -5,6 +5,24 @@
 export { logger } from './logger.js';
 export { kalshiFetchJson, hasKalshiAuth, getKalshiAuthHeaders } from './kalshi-auth.js';
 
+// Price history database
+export {
+  recordPrice,
+  recordPrices,
+  getMarketHistory,
+  getPriceAt,
+  calculateTrend,
+  findMovingMarkets,
+  markResolved,
+  getHistoryStats,
+  forceSave,
+  formatPriceHistoryReport,
+  type PriceSnapshot,
+  type MarketHistory,
+  type PriceTrend,
+  type PriceHistoryStats,
+} from './price-history.js';
+
 /**
  * Normalize text for comparison
  */

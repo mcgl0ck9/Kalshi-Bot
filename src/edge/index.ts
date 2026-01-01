@@ -52,3 +52,4 @@ export * from './enhanced-sports-edge.js';
 export * from './city-weather-edge.js';
 export * from './measles-edge.js';
 export * from './earnings-edge.js';
+export * from './line-move-detector.js';

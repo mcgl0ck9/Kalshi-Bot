@@ -59,11 +59,17 @@ export {
   findSportsEdges,
   formatSportsOddsReport,
   formatSportsEdgesReport,
+  // Player props
+  fetchPlayerProps,
+  fetchAllPlayerProps,
+  findPlayerPropEdges,
   type SportOdds,
   type BookmakerOdds,
   type LineMovement,
   type InjuryLineImpact,
   type SportsEdgeSignal,
+  type PlayerProp,
+  type PlayerPropEdge,
 } from './sports-odds.js';
 
 // Polymarket on-chain data (Goldsky subgraphs + Gamma API)
@@ -83,3 +89,41 @@ export {
   type GammaMarket,
   type RecentTrade,
 } from './polymarket-onchain.js';
+
+// Whale auto-discovery
+export {
+  discoverProfitableWallets,
+  getTrackedWhales,
+  getWhaleWallets,
+  isKnownWhale,
+  getWhaleDiscoveryStats,
+  formatWhaleDiscoveryReport,
+  type DiscoveredWhale,
+  type WhaleDiscoveryResult,
+} from './whale-discovery.js';
+
+// Transcript parsing (Fed speeches, earnings calls)
+export {
+  getKeywordFrequencies,
+  getKeywordFrequency,
+  adjustForContext,
+  getContextAdjustedFrequencies,
+  parseTranscript,
+  addTranscriptToCache,
+  getTranscriptStats,
+  type TranscriptAnalysis,
+  type KeywordFrequency,
+} from './transcript-parser.js';
+
+// Health trackers (flu, COVID, mpox)
+export {
+  fetchFluData,
+  fetchCovidData,
+  fetchMpoxData,
+  fetchAllHealthData,
+  calculateDiseaseThresholdProbability,
+  getHealthTrackingStats,
+  formatHealthReport,
+  type DiseaseData,
+  type HealthMarketEdge,
+} from './health-trackers.js';

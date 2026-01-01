@@ -263,6 +263,19 @@ export async function findFedSpeechEdges(
 ): Promise<FedSpeechEdge[]> {
   const edges: FedSpeechEdge[] = [];
 
+  // Try to get dynamic frequencies from transcript parser
+  let dynamicFrequencies: Record<string, { frequency: number; confidence: number }> = {};
+  try {
+    const { getContextAdjustedFrequencies } = await import('../fetchers/transcript-parser.js');
+    const frequencies = getContextAdjustedFrequencies(recentHeadlines);
+    for (const [kw, data] of Object.entries(frequencies)) {
+      dynamicFrequencies[kw] = { frequency: data.frequency, confidence: data.confidence };
+    }
+    logger.debug(`Loaded ${Object.keys(dynamicFrequencies).length} dynamic keyword frequencies`);
+  } catch (error) {
+    logger.debug(`Using static frequencies (transcript parser unavailable): ${error}`);
+  }
+
   // Filter to Fed mention markets
   const fedMarkets = markets.filter(m => {
     const ticker = m.ticker ?? m.id ?? '';
@@ -286,18 +299,33 @@ export async function findFedSpeechEdges(
       continue;
     }
 
-    // Look up historical frequency
+    // Look up frequency - prefer dynamic, fall back to static
     const keywordLower = keyword.toLowerCase();
-    const freqData = KEYWORD_FREQUENCIES[keywordLower];
-    if (!freqData) {
+    const dynamicData = dynamicFrequencies[keywordLower];
+    const staticData = KEYWORD_FREQUENCIES[keywordLower];
+
+    // Use dynamic frequency if available, otherwise static
+    let adjustedFrequency: number;
+    let confidence: number;
+    let isContextual = false;
+
+    if (dynamicData) {
+      // Dynamic frequencies are already context-adjusted
+      adjustedFrequency = dynamicData.frequency;
+      confidence = dynamicData.confidence;
+      logger.debug(`Using dynamic frequency for "${keyword}": ${(adjustedFrequency * 100).toFixed(0)}%`);
+    } else if (staticData) {
+      adjustedFrequency = staticData.frequency;
+      confidence = staticData.confidence;
+      isContextual = staticData.contextual;
+    } else {
       logger.debug(`No frequency data for keyword: ${keyword}`);
       continue;
     }
 
-    // Adjust frequency based on context if applicable
-    let adjustedFrequency = freqData.frequency;
-    if (freqData.contextual && recentHeadlines.length > 0) {
-      const contextBoost = calculateContextBoost(freqData.contextKeywords, recentHeadlines);
+    // Apply context boost only for static data (dynamic is already adjusted)
+    if (!dynamicData && isContextual && staticData && recentHeadlines.length > 0) {
+      const contextBoost = calculateContextBoost(staticData.contextKeywords, recentHeadlines);
       adjustedFrequency = Math.min(0.95, adjustedFrequency + contextBoost);
       if (contextBoost > 0) {
         logger.debug(`Context boost for "${keyword}": +${(contextBoost * 100).toFixed(0)}%`);
@@ -329,7 +357,7 @@ export async function findFedSpeechEdges(
       impliedProbability: adjustedFrequency,
       edge,
       direction: edge > 0 ? 'buy_yes' : 'buy_no',
-      confidence: freqData.confidence,
+      confidence,
       reasoning: generateReasoning(keyword, marketPrice, adjustedFrequency, edge),
       signalStrength,
     });

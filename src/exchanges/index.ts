@@ -182,6 +182,109 @@ export async function fetchKalshiSportsMarkets(): Promise<Market[]> {
 }
 
 /**
+ * Series that currently have open markets for cross-platform matching
+ * These are single prediction markets (not parlays)
+ * Updated list based on API availability check
+ */
+const ACTIVE_SERIES = [
+  // Crypto - verified to have open markets
+  'KXBTC', 'KXBTCD', 'KXETH', 'KXDOGE',
+  // Health
+  'KXMEASLES',
+  // Entertainment - from series scan
+  'KXGTAPRICE', 'KXTRAITORS', 'KXAOMEN',
+  // Politics
+  'KXPERUCONGRESS', 'KXHONDURASCONGRESS', 'GOVPARTYMO', 'KXSENATEMSD',
+  'KXVETOOVERRIDE', 'KXCLEANCR', 'KXTX21R',
+  // Awards
+  'KXWHATSONSTAGEBPIAM', 'KXGRAMBSWPA', 'KXGRAMBCC', 'KXGRAMBSWFVM', 'KXSAGAWARDSUPACTR',
+  // Tech
+  'KXIPOOURA', 'KXDOGEMAX1',
+  // Sports (non-MVE)
+  'KXUCLRO8', 'KXPGASOLHEIM',
+];
+
+/**
+ * Fetch prediction markets from key series that can match with Polymarket
+ * Directly queries known active series rather than filtering the full series list
+ */
+export async function fetchMatchableKalshiMarkets(): Promise<Market[]> {
+  try {
+    if (!hasKalshiAuth()) {
+      logger.debug('Skipping matchable markets fetch - no Kalshi auth configured');
+      return [];
+    }
+
+    const allMarkets: Market[] = [];
+    const seenTickers = new Set<string>();
+
+    logger.info(`Fetching from ${ACTIVE_SERIES.length} active series`);
+
+    // Fetch markets from each series in batches
+    const batchSize = 10;
+
+    for (let i = 0; i < ACTIVE_SERIES.length; i += batchSize) {
+      const batch = ACTIVE_SERIES.slice(i, i + batchSize);
+
+      const batchResults = await Promise.all(
+        batch.map(async (series) => {
+          try {
+            const data = await kalshiFetchJson<{ markets?: unknown[] }>(
+              `/trade-api/v2/markets?series_ticker=${series}&limit=50&status=open`
+            );
+            return { series, markets: data?.markets ?? [] };
+          } catch {
+            return { series, markets: [] };
+          }
+        })
+      );
+
+      for (const { markets } of batchResults) {
+        for (const m of markets) {
+          const market = m as Record<string, unknown>;
+          const ticker = market.ticker as string ?? '';
+
+          // Skip duplicates
+          if (seenTickers.has(ticker)) continue;
+          seenTickers.add(ticker);
+
+          // Skip KXMVE (parlay) markets
+          if (ticker.toUpperCase().includes('KXMVE')) continue;
+
+          const title = market.title as string ?? '';
+          const subtitle = market.subtitle as string ?? '';
+
+          // Use title only (not combined with subtitle) for better matching
+          const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+
+          allMarkets.push({
+            platform: 'kalshi' as const,
+            id: ticker,
+            ticker,
+            title: title, // Keep title separate from subtitle for matching
+            subtitle: subtitle,
+            description: market.rules_primary as string,
+            category: categorizeMarket(title, ticker),
+            price: yesPrice / 100,
+            volume: (market.volume as number) ?? 0,
+            volume24h: (market.volume_24h as number) ?? 0,
+            liquidity: (market.open_interest as number) ?? 0,
+            url: buildKalshiUrl(ticker, title),
+            closeTime: market.close_time as string,
+          });
+        }
+      }
+    }
+
+    logger.info(`Fetched ${allMarkets.length} matchable Kalshi markets`);
+    return allMarkets;
+  } catch (error) {
+    logger.error(`Matchable Kalshi markets fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
  * Fetch ALL markets from Kalshi using pagination
  * This gets markets beyond the default 200 limit
  */
