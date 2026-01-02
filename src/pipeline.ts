@@ -34,6 +34,12 @@ import { fetchAllNews, checkWhaleActivity, fetchAllSportsOdds, findSportsEdges, 
 import { fetchFedWatch } from './fetchers/economic/fed-watch.js';
 import { fetchPolymarketMarketsWithPrices } from './fetchers/polymarket-onchain.js';
 
+// P0 Data Sources (no API keys required)
+import { fetchAllSportsOddsESPN, findESPNEdge } from './fetchers/espn-odds.js';
+import { fetchWastewaterData, fetchFluData as fetchCDCFluData, analyzeWastewaterEdge } from './fetchers/cdc-surveillance.js';
+import { fetchFundingRates, fetchFearGreedIndex, analyzeFundingEdge, analyzeFearGreedEdge } from './fetchers/crypto-funding.js';
+import { fetchGDPNow, fetchInflationNowcast, analyzeGDPEdge, analyzeInflationEdge } from './fetchers/fed-nowcasts.js';
+
 // Analysis
 import {
   matchMarketsCrossPlatform,
@@ -104,6 +110,12 @@ export interface PipelineResult {
     newMarketsDetected: number;
     playerPropEdges: number;
     lineMoveEdges: number;
+    // P0 sources
+    espnOddsGames: number;
+    espnEdges: number;
+    cdcWastewaterSignals: number;
+    cryptoFundingSignals: number;
+    fedNowcastSignals: number;
   };
   opportunities: EdgeOpportunity[];
   divergences: CrossPlatformMatch[];
@@ -148,6 +160,12 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     newMarketsDetected: 0,
     playerPropEdges: 0,
     lineMoveEdges: 0,
+    // P0 sources
+    espnOddsGames: 0,
+    espnEdges: 0,
+    cdcWastewaterSignals: 0,
+    cryptoFundingSignals: 0,
+    fedNowcastSignals: 0,
   };
 
   const opportunities: EdgeOpportunity[] = [];
@@ -501,6 +519,71 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       } catch (error) {
         logger.warn(`  Line move detection failed: ${error}`);
       }
+    }
+
+    // 6.5.3d: ESPN Sports Odds (no API key required - always runs)
+    logger.info('  Fetching ESPN sports odds...');
+    try {
+      const espnOdds = await fetchAllSportsOddsESPN();
+      let totalESPNGames = 0;
+      let espnEdgesFound = 0;
+
+      for (const [sport, games] of espnOdds) {
+        totalESPNGames += games.length;
+        if (games.length > 0) {
+          logger.info(`    ESPN ${sport.toUpperCase()}: ${games.length} games`);
+        }
+
+        // Find edges between Kalshi and ESPN odds
+        for (const game of games) {
+          // Find matching Kalshi market
+          const matchingMarket = kalshiMarkets.find(m => {
+            const title = m.title?.toLowerCase() ?? '';
+            const homeTeam = game.homeTeam.toLowerCase();
+            const awayTeam = game.awayTeam.toLowerCase();
+            return title.includes(homeTeam) || title.includes(awayTeam);
+          });
+
+          if (matchingMarket && game.odds) {
+            // Determine if this market is for the home team
+            const title = matchingMarket.title?.toLowerCase() ?? '';
+            const isHomeTeam = title.includes(game.homeTeam.toLowerCase());
+
+            const edge = findESPNEdge(matchingMarket.price, game.odds, isHomeTeam);
+            if (edge && edge.edge >= 0.03) {
+              espnEdgesFound++;
+              const reasoning = `ESPN odds imply ${(edge.impliedProb * 100).toFixed(0)}% vs Kalshi ${(matchingMarket.price * 100).toFixed(0)}%`;
+              const opp: EdgeOpportunity = {
+                market: matchingMarket,
+                source: 'sports',
+                edge: edge.edge,
+                confidence: Math.min(edge.edge * 5, 0.8),
+                urgency: edge.edge > 0.08 ? 'critical' : edge.edge > 0.05 ? 'standard' : 'fyi',
+                direction: edge.direction,
+                signals: {
+                  espnOdds: {
+                    homeTeam: game.homeTeam,
+                    awayTeam: game.awayTeam,
+                    homeSpread: game.odds.homeSpread,
+                    homeMoneyline: game.odds.homeMoneyline,
+                    awayMoneyline: game.odds.awayMoneyline,
+                    espnImpliedProb: edge.impliedProb,
+                    reasoning,
+                  },
+                },
+              };
+              opp.sizing = calculateAdaptivePosition(bankroll, opp);
+              opportunities.push(opp);
+            }
+          }
+        }
+      }
+
+      stats.espnOddsGames = totalESPNGames;
+      stats.espnEdges = espnEdgesFound;
+      logger.success(`  ESPN: ${totalESPNGames} games, ${espnEdgesFound} edges found`);
+    } catch (error) {
+      logger.warn(`  ESPN odds fetch failed: ${error}`);
     }
 
     // 6.5.3b: Enhanced Sports Edge Detection (sharp/square + injuries + weather)
@@ -952,6 +1035,73 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       logger.warn(`  Health tracker failed: ${error}`);
     }
 
+    // 6.5.10c: CDC Wastewater Surveillance (leading indicator for case counts)
+    logger.info('  Checking CDC wastewater surveillance...');
+    try {
+      const wastewater = await fetchWastewaterData();
+      const cdcFlu = await fetchCDCFluData();
+
+      if (wastewater.length > 0) {
+        logger.info(`    Wastewater: ${wastewater.length} jurisdictions monitored`);
+
+        // Find health markets that could benefit from wastewater leading indicator
+        const healthMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('covid') || title.includes('hospitalization') ||
+                 title.includes('case') || title.includes('pandemic');
+        });
+
+        for (const market of healthMarkets) {
+          const title = market.title?.toLowerCase() ?? '';
+
+          // Extract threshold from market title
+          const thresholdMatch = title.match(/([\d,]+)\s*(cases|hospitalizations)?/);
+          if (!thresholdMatch) continue;
+
+          const threshold = parseInt(thresholdMatch[1].replace(/,/g, ''));
+
+          // Estimate current case count (would need real data)
+          const estimatedCurrentCases = 50000; // Placeholder - would come from CDC API
+
+          const wastewaterEdge = analyzeWastewaterEdge(wastewater, threshold, estimatedCurrentCases);
+
+          if (wastewaterEdge) {
+            stats.cdcWastewaterSignals++;
+            const opp: EdgeOpportunity = {
+              market,
+              source: 'combined',
+              edge: wastewaterEdge.confidence * 0.15, // Scale confidence to edge
+              confidence: wastewaterEdge.confidence,
+              urgency: wastewaterEdge.confidence > 0.7 ? 'critical' : wastewaterEdge.confidence > 0.5 ? 'standard' : 'fyi',
+              direction: wastewaterEdge.direction,
+              signals: {
+                wastewater: {
+                  currentLevel: wastewaterEdge.currentLevel,
+                  projectedLevel: wastewaterEdge.projectedLevel,
+                  leadDays: wastewaterEdge.leadDays,
+                  reasoning: wastewaterEdge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+
+            logger.info(`    🧪 Wastewater ${wastewaterEdge.direction}: ${wastewaterEdge.reasoning}`);
+          }
+        }
+      }
+
+      if (cdcFlu.length > 0) {
+        logger.info(`    Flu surveillance: ${cdcFlu.length} data points`);
+      }
+
+      if (stats.cdcWastewaterSignals > 0) {
+        logger.success(`  ${stats.cdcWastewaterSignals} CDC wastewater signals`);
+      }
+    } catch (error) {
+      logger.warn(`  CDC wastewater surveillance failed: ${error}`);
+    }
+
     // 6.5.11: Earnings Call Keyword Edge Detection
     logger.info('  Checking earnings call keyword edges...');
     try {
@@ -1213,6 +1363,222 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       }
     } catch (error) {
       logger.warn(`  Options-implied edge detection failed: ${error}`);
+    }
+
+    // 6.5.13b: Crypto Funding Rates (contrarian signals from Hyperliquid)
+    logger.info('  Checking crypto funding rates...');
+    try {
+      const [fundingRates, fearGreed] = await Promise.all([
+        fetchFundingRates(),
+        fetchFearGreedIndex(),
+      ]);
+
+      if (fundingRates.length > 0) {
+        logger.info(`    Funding rates: ${fundingRates.length} symbols from Hyperliquid`);
+
+        // Log extreme funding conditions
+        const extremeFunding = fundingRates.filter(f => f.contrarian !== null);
+        for (const f of extremeFunding) {
+          logger.info(`    ⚠️ ${f.symbol}: ${f.weightedFundingRate.toFixed(4)}% funding (${f.extremeLevel}) - ${f.contrarian} signal`);
+        }
+
+        // Find crypto markets and apply funding rate signals
+        const cryptoMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('bitcoin') || title.includes('btc') ||
+                 title.includes('ethereum') || title.includes('eth') ||
+                 title.includes('solana') || title.includes('sol') ||
+                 title.includes('crypto') || title.includes('doge');
+        });
+
+        for (const market of cryptoMarkets) {
+          const title = market.title?.toLowerCase() ?? '';
+
+          // Determine if this is an "up" or "down" market
+          const isUpMarket = title.includes('above') || title.includes('over') ||
+                            title.includes('reach') || title.includes('hit') ||
+                            (title.includes('price') && !title.includes('below'));
+
+          // Find matching symbol
+          let symbol = 'BTC';
+          if (title.includes('ethereum') || title.includes('eth')) symbol = 'ETH';
+          else if (title.includes('solana') || title.includes('sol')) symbol = 'SOL';
+          else if (title.includes('doge')) symbol = 'DOGE';
+
+          const fundingEdge = analyzeFundingEdge(fundingRates, symbol, market.price, isUpMarket);
+
+          if (fundingEdge) {
+            stats.cryptoFundingSignals++;
+            const opp: EdgeOpportunity = {
+              market,
+              source: 'combined',
+              edge: fundingEdge.strength * 0.12, // Scale strength to edge
+              confidence: 0.5 + fundingEdge.strength * 0.3,
+              urgency: fundingEdge.strength > 0.7 ? 'critical' : fundingEdge.strength > 0.4 ? 'standard' : 'fyi',
+              direction: fundingEdge.direction,
+              signals: {
+                cryptoFunding: {
+                  symbol: fundingEdge.symbol,
+                  fundingRate: fundingEdge.data.fundingRate,
+                  openInterest: fundingEdge.data.openInterest,
+                  signalType: fundingEdge.signalType,
+                  reasoning: fundingEdge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+
+            logger.info(`    💰 ${symbol} ${fundingEdge.direction}: ${fundingEdge.reasoning}`);
+          }
+        }
+      }
+
+      // Fear & Greed Index as additional signal
+      if (fearGreed) {
+        logger.info(`    Fear & Greed: ${fearGreed.value} (${fearGreed.classification})`);
+
+        // Apply Fear & Greed to BTC markets specifically
+        const btcMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('bitcoin') || title.includes('btc');
+        });
+
+        for (const market of btcMarkets) {
+          const title = market.title?.toLowerCase() ?? '';
+          const isUpMarket = title.includes('above') || title.includes('over') || title.includes('reach');
+
+          const fgEdge = analyzeFearGreedEdge(fearGreed, market.price, isUpMarket);
+
+          if (fgEdge) {
+            stats.cryptoFundingSignals++;
+            const opp: EdgeOpportunity = {
+              market,
+              source: 'combined',
+              edge: fgEdge.strength * 0.10,
+              confidence: 0.5 + fgEdge.strength * 0.25,
+              urgency: fgEdge.strength > 0.6 ? 'standard' : 'fyi',
+              direction: fgEdge.direction,
+              signals: {
+                fearGreed: {
+                  value: fearGreed.value,
+                  classification: fearGreed.classification,
+                  reasoning: fgEdge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+          }
+        }
+      }
+
+      if (stats.cryptoFundingSignals > 0) {
+        logger.success(`  ${stats.cryptoFundingSignals} crypto funding/sentiment signals`);
+      }
+    } catch (error) {
+      logger.warn(`  Crypto funding rate check failed: ${error}`);
+    }
+
+    // 6.5.13c: Fed Nowcasts (GDPNow, Inflation estimates)
+    logger.info('  Checking Fed nowcasts...');
+    try {
+      const [gdpNow, inflationNow] = await Promise.all([
+        fetchGDPNow(),
+        fetchInflationNowcast(),
+      ]);
+
+      if (gdpNow) {
+        logger.info(`    GDPNow ${gdpNow.quarter}: ${gdpNow.estimate.toFixed(2)}%`);
+
+        // Find GDP markets
+        const gdpMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('gdp') || title.includes('growth') ||
+                 (title.includes('recession') && !title.includes('yield'));
+        });
+
+        for (const market of gdpMarkets) {
+          // Extract threshold from market title (e.g., "GDP above 2%")
+          const thresholdMatch = market.title?.match(/(\d+\.?\d*)%/);
+          const threshold = thresholdMatch ? parseFloat(thresholdMatch[1]) : 2.0;
+
+          const gdpEdge = analyzeGDPEdge(gdpNow, threshold, market.price);
+
+          if (gdpEdge) {
+            stats.fedNowcastSignals++;
+            const opp: EdgeOpportunity = {
+              market,
+              source: 'macro',
+              edge: gdpEdge.edge,
+              confidence: gdpEdge.confidence,
+              urgency: gdpEdge.edge > 0.10 ? 'critical' : gdpEdge.edge > 0.05 ? 'standard' : 'fyi',
+              direction: gdpEdge.direction,
+              signals: {
+                gdpNow: {
+                  estimate: gdpNow.estimate,
+                  quarter: gdpNow.quarter,
+                  impliedProb: gdpEdge.marketImplied,
+                  reasoning: gdpEdge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+
+            logger.info(`    📈 GDP ${gdpEdge.direction}: ${gdpEdge.reasoning}`);
+          }
+        }
+      }
+
+      if (inflationNow) {
+        logger.info(`    Inflation nowcast: ${inflationNow.headline.toFixed(2)}%`);
+
+        // Find inflation/CPI markets
+        const inflationMarkets = kalshiMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('cpi') || title.includes('inflation') ||
+                 title.includes('pce') || title.includes('price');
+        });
+
+        for (const market of inflationMarkets) {
+          // Extract threshold from market title (e.g., "CPI above 3%")
+          const thresholdMatch = market.title?.match(/(\d+\.?\d*)%/);
+          const threshold = thresholdMatch ? parseFloat(thresholdMatch[1]) : 2.5;
+
+          const inflationEdge = analyzeInflationEdge(inflationNow, threshold, market.price);
+
+          if (inflationEdge) {
+            stats.fedNowcastSignals++;
+            const opp: EdgeOpportunity = {
+              market,
+              source: 'macro',
+              edge: inflationEdge.edge,
+              confidence: inflationEdge.confidence,
+              urgency: inflationEdge.edge > 0.08 ? 'critical' : inflationEdge.edge > 0.04 ? 'standard' : 'fyi',
+              direction: inflationEdge.direction,
+              signals: {
+                inflationNow: {
+                  headline: inflationNow.headline,
+                  month: inflationNow.month,
+                  impliedProb: inflationEdge.marketImplied,
+                  reasoning: inflationEdge.reasoning,
+                },
+              },
+            };
+            opp.sizing = calculateAdaptivePosition(bankroll, opp);
+            opportunities.push(opp);
+
+            logger.info(`    📊 Inflation ${inflationEdge.direction}: ${inflationEdge.reasoning}`);
+          }
+        }
+      }
+
+      if (stats.fedNowcastSignals > 0) {
+        logger.success(`  ${stats.fedNowcastSignals} Fed nowcast signals`);
+      }
+    } catch (error) {
+      logger.warn(`  Fed nowcast check failed: ${error}`);
     }
 
     // 6.5.14: New Market Scanner (early mover advantage on fresh markets)

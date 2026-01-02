@@ -187,6 +187,52 @@ export interface EdgeOpportunity {
       openingProb?: number;
       reasoning: string;
     };
+    // ESPN odds edge (P0 data source)
+    espnOdds?: {
+      homeTeam: string;
+      awayTeam: string;
+      homeSpread: number;
+      homeMoneyline: number;
+      awayMoneyline: number;
+      espnImpliedProb: number;
+      reasoning: string;
+    };
+    // CDC wastewater edge (P0 data source)
+    wastewater?: {
+      pathogen?: string;
+      currentLevel: string;
+      projectedLevel: string;
+      leadDays: number;
+      reasoning: string;
+    };
+    // Crypto funding rate edge (P0 data source)
+    cryptoFunding?: {
+      symbol: string;
+      fundingRate?: number;
+      openInterest?: number;
+      signalType: string;
+      reasoning: string;
+    };
+    // Fear & Greed Index edge (P0 data source)
+    fearGreed?: {
+      value: number;
+      classification: string;
+      reasoning: string;
+    };
+    // GDP nowcast edge (P0 data source)
+    gdpNow?: {
+      estimate: number;
+      quarter: string;
+      impliedProb: number;
+      reasoning: string;
+    };
+    // Inflation nowcast edge (P0 data source)
+    inflationNow?: {
+      headline: number;
+      month: string;
+      impliedProb: number;
+      reasoning: string;
+    };
   };
   sizing?: PositionSizing;
 }
