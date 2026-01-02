@@ -428,6 +428,27 @@ export function analyzeSentimentForTopics(
 // =============================================================================
 
 /**
+ * Check if a market title looks like a parlay/combo (multiple outcomes)
+ */
+function isParlayMarket(title: string): boolean {
+  if (!title) return true;
+
+  // Parlay patterns: "yes Team1,no Team2" or multiple outcomes
+  const yesNoCount = (title.match(/\b(yes|no)\s/gi) || []).length;
+  if (yesNoCount > 1) return true;
+
+  // Multiple comma-separated items (3+ parts)
+  const commaItems = title.split(',').length;
+  if (commaItems > 2) return true;
+
+  // Contains player stats patterns like "Player: 10+"
+  const playerStatMatches = (title.match(/\w+:\s*\d+\+/g) || []).length;
+  if (playerStatMatches > 1) return true;
+
+  return false;
+}
+
+/**
  * Find opportunities where sentiment diverges from market price
  */
 export function findSentimentEdges(
@@ -442,6 +463,9 @@ export function findSentimentEdges(
     const marketPrice = market.price ?? 0;
 
     if (!marketPrice || marketPrice <= 0) continue;
+
+    // Skip parlay/combo markets - they're too complex for sentiment analysis
+    if (isParlayMarket(market.title ?? '')) continue;
 
     // Try to match market to a topic
     let matchedTopic: string | null = null;

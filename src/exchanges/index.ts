@@ -729,6 +729,20 @@ function normalizePolymarketMarket(market: DrMarket): Market {
 }
 
 /**
+ * Check if a keyword matches in text using word boundaries for short keywords
+ * This prevents false positives like "Kenneth" matching "eth"
+ */
+function keywordMatches(text: string, keyword: string): boolean {
+  // For short keywords (<=4 chars like "eth", "btc", "nfl"), use word boundaries
+  if (keyword.length <= 4) {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+    return regex.test(text);
+  }
+  // For longer keywords, substring match is safe
+  return text.includes(keyword);
+}
+
+/**
  * Categorize market based on title and ticker
  */
 function categorizeMarket(title: string, ticker?: string): MarketCategory {
@@ -743,7 +757,7 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
   if (tickerUpper.match(/^KX(OSCAR|GRAMMY|EMMY)/)) return 'entertainment';
   if (tickerUpper.match(/^KX(HURR|TEMP)/)) return 'weather';
 
-  // Check title keywords
+  // Check title keywords with word boundary matching for short keywords
   const categoryKeywords: Record<MarketCategory, string[]> = {
     politics: ['trump', 'biden', 'president', 'congress', 'election', 'impeach', 'senate', 'governor'],
     crypto: ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto'],
@@ -757,7 +771,7 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
   };
 
   for (const [category, keywords] of Object.entries(categoryKeywords)) {
-    if (keywords.some(kw => titleLower.includes(kw))) {
+    if (keywords.some(kw => keywordMatches(titleLower, kw))) {
       return category as MarketCategory;
     }
   }
