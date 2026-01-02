@@ -726,12 +726,30 @@ export function matchMarketsCrossPlatform(
 
 /**
  * Filter to only markets with significant price divergence
+ * Also filters out suspicious matches where one price is near 0 or 1
  */
 export function getDivergentMarkets(
   matches: CrossPlatformMatch[],
   minDivergence: number = 0.05
 ): CrossPlatformMatch[] {
-  const divergent = matches.filter(m => m.absDifference >= minDivergence);
+  const divergent = matches.filter(m => {
+    // Skip if divergence too small
+    if (m.absDifference < minDivergence) return false;
+
+    // Skip suspicious matches where one price is extremely low or high
+    // This often indicates a bad match or non-existent market
+    const minPrice = Math.min(m.kalshiPrice, m.polymarketPrice);
+    const maxPrice = Math.max(m.kalshiPrice, m.polymarketPrice);
+
+    // If one price is < 3% and the other is > 20%, likely a bad match
+    if (minPrice < 0.03 && maxPrice > 0.20) {
+      logger.debug(`Skipping suspicious match: ${m.kalshi.title?.slice(0, 40)} (${(m.kalshiPrice * 100).toFixed(0)}¢ vs ${(m.polymarketPrice * 100).toFixed(0)}¢)`);
+      return false;
+    }
+
+    return true;
+  });
+
   logger.info(`Found ${divergent.length} markets with >${minDivergence * 100}% divergence`);
   return divergent;
 }

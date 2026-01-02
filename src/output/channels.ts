@@ -232,8 +232,13 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
   }
   lines.push('');
 
-  // Market title
-  lines.push(`**${market.title}**`);
+  // Market title - include subtitle for multi-outcome markets (shows specific outcome)
+  if (market.subtitle) {
+    lines.push(`**${market.title}**`);
+    lines.push(`*Outcome: ${market.subtitle}*`);
+  } else {
+    lines.push(`**${market.title}**`);
+  }
   lines.push('');
 
   // Edge explanation
@@ -294,7 +299,20 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
     lines.push(`Price will likely revert toward base rate`);
   } else if (signals.crossPlatform) {
     const cp = signals.crossPlatform;
-    lines.push(`Kalshi: ${(cp.kalshiPrice * 100).toFixed(0)} cents vs Polymarket: ${(cp.polymarketPrice * 100).toFixed(0)} cents`);
+    lines.push(`Kalshi: ${(cp.kalshiPrice * 100).toFixed(0)}¢ vs Polymarket: ${(cp.polymarketPrice * 100).toFixed(0)}¢`);
+    // Show which markets are being compared for clarity
+    if (cp.kalshi.subtitle) {
+      lines.push(`Kalshi outcome: "${cp.kalshi.subtitle}"`);
+    }
+    if (cp.polymarket.title && cp.polymarket.title !== cp.kalshi.title) {
+      lines.push(`Polymarket: "${cp.polymarket.title.slice(0, 60)}..."`);
+    }
+    // Explain the edge direction
+    if (cp.polymarketMoreBullish) {
+      lines.push(`Polymarket is more bullish → Kalshi may be underpriced`);
+    } else {
+      lines.push(`Kalshi is more bullish → Polymarket may be underpriced`);
+    }
   } else if (signals.sentiment) {
     lines.push(`News sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
   } else if (signals.entertainment) {

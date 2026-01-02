@@ -102,7 +102,13 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
   }
   lines.push('');
 
-  lines.push(`**${market.title}**`);
+  // Market title - include subtitle for multi-outcome markets
+  if (market.subtitle) {
+    lines.push(`**${market.title}**`);
+    lines.push(`*Outcome: ${market.subtitle}*`);
+  } else {
+    lines.push(`**${market.title}**`);
+  }
   lines.push('');
 
   // Price box
@@ -159,7 +165,15 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     lines.push(`Price will likely revert toward base rate`);
   } else if (signals.crossPlatform) {
     const cp = signals.crossPlatform;
-    lines.push(`Kalshi ${(cp.kalshiPrice * 100).toFixed(0)}c vs Poly ${(cp.polymarketPrice * 100).toFixed(0)}c`);
+    lines.push(`Kalshi: ${(cp.kalshiPrice * 100).toFixed(0)}¢ vs Polymarket: ${(cp.polymarketPrice * 100).toFixed(0)}¢`);
+    if (cp.kalshi.subtitle) {
+      lines.push(`Outcome: "${cp.kalshi.subtitle}"`);
+    }
+    if (cp.polymarketMoreBullish) {
+      lines.push(`Polymarket is bullish → Kalshi may be underpriced`);
+    } else {
+      lines.push(`Kalshi is bullish → may be overpriced`);
+    }
   } else if (signals.sentiment) {
     lines.push(`Sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
   } else if (signals.entertainment) {
