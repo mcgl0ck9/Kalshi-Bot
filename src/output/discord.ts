@@ -388,8 +388,18 @@ export async function startBot(
 
   const bot = createBot();
 
-  bot.on('ready', () => {
+  bot.on('ready', async () => {
     logger.info(`Discord bot logged in as ${bot.user?.tag}`);
+
+    // Register slash commands with Discord API
+    if (bot.user) {
+      try {
+        await registerCommands(bot.user.id);
+        logger.info('Slash commands registered successfully');
+      } catch (error) {
+        logger.error(`Failed to register slash commands: ${error}`);
+      }
+    }
   });
 
   bot.on('interactionCreate', async (interaction) => {

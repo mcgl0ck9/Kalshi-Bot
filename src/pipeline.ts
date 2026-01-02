@@ -1973,14 +1973,31 @@ export async function getDivergencesReport(): Promise<string> {
  * Get status report (for /status command)
  */
 export function getStatusReport(): string {
+  const now = new Date();
+  const uptimeSeconds = process.uptime();
+  const uptimeHours = Math.floor(uptimeSeconds / 3600);
+  const uptimeMins = Math.floor((uptimeSeconds % 3600) / 60);
+
   return [
-    '**Kalshi Edge Detector Status**',
+    '**🤖 Kalshi Edge Detector Status**',
     '',
-    `Status: Online ✅`,
-    `Bankroll: $${BANKROLL.toLocaleString()}`,
-    `Min Edge: ${(MIN_EDGE_THRESHOLD * 100).toFixed(0)}%`,
-    `Schedule: 6:30am, 12pm, 5pm ET`,
+    `**Status:** Online ✅`,
+    `**Uptime:** ${uptimeHours}h ${uptimeMins}m`,
+    `**Time:** ${now.toLocaleString('en-US', { timeZone: 'America/New_York' })} ET`,
     '',
-    `Using dr-manhattan for exchange APIs`,
+    '**Configuration:**',
+    `• Bankroll: $${BANKROLL.toLocaleString()}`,
+    `• Min Edge: ${(MIN_EDGE_THRESHOLD * 100).toFixed(0)}%`,
+    `• Schedule: 6:30am, 12pm, 5pm ET`,
+    '',
+    '**Available Commands:**',
+    '• `/scan` - Run immediate market scan',
+    '• `/whales` - Check whale activity',
+    '• `/divergences` - Cross-platform price gaps',
+    '• `/status` - This status report',
+    '• `/rt <movie>` - Get Rotten Tomatoes score',
+    '• `/boxoffice` - Weekend box office numbers',
+    '',
+    '_Powered by dr-manhattan exchange APIs_',
   ].join('\n');
 }
