@@ -25,6 +25,15 @@ Signals that pass the "who's on the other side?" test:
 10. **Sports Odds Consensus** (`sports-odds.ts`) - Compare Kalshi sports markets to sportsbook consensus
 11. **Weather Overreaction** (`weather-overreaction.ts`) - Apply climatological base rates + forecast skill limits
 12. **Recency Bias** (`recency-bias.ts`) - Detect markets that moved more than optimal Bayesian update
+13. **Whale Performance** (`whale-performance.ts`) - Track whale win rates by category for confidence weighting
+
+### P0 Data Sources (No API Keys Required)
+Sustainable data feeds that work without manual key renewal:
+
+14. **ESPN Sports Odds** (`espn-odds.ts`) - NFL/NBA/NHL/MLB/NCAAF/NCAAB odds from ESPN public API
+15. **CDC Health Surveillance** (`cdc-surveillance.ts`) - Wastewater + flu data (leads cases by 7-14 days)
+16. **Crypto Funding Rates** (`crypto-funding.ts`) - Hyperliquid DeFi perps funding + open interest
+17. **Fed Nowcasts** (`fed-nowcasts.ts`) - Atlanta Fed GDPNow + Cleveland Fed inflation estimates
 
 ## Commands
 
@@ -55,7 +64,11 @@ src/
 │   ├── entertainment.ts # Box office, Rotten Tomatoes
 │   ├── options-implied.ts # Fed Funds, SPX, Treasury yields
 │   ├── sports-odds.ts # The Odds API integration
+│   ├── espn-odds.ts   # ESPN public API (no key required)
 │   ├── polymarket-onchain.ts # On-chain whale conviction analysis
+│   ├── cdc-surveillance.ts # CDC wastewater + flu surveillance
+│   ├── crypto-funding.ts # Hyperliquid funding rates + Fear/Greed
+│   ├── fed-nowcasts.ts # GDPNow + inflation nowcasts
 │   └── economic/      # Fed, CPI, Jobs, GDP nowcasts
 ├── edge/              # Edge detection modules
 │   ├── macro-edge.ts  # Economic indicator edges
@@ -65,7 +78,8 @@ src/
 │   ├── injury-overreaction.ts # Sports injury overreaction
 │   ├── weather-overreaction.ts # Weather forecast bias
 │   ├── recency-bias.ts # Base rate neglect detection
-│   └── cross-platform-conviction.ts # Whale conviction edges
+│   ├── cross-platform-conviction.ts # Whale conviction edges
+│   └── whale-performance.ts # Whale historical win rate tracking
 ├── analysis/          # Sentiment, cross-platform matching, Kelly sizing
 │   ├── cross-platform.ts # Market matching with entity extraction
 │   ├── sentiment.ts   # News sentiment with sports lexicon
@@ -303,25 +317,158 @@ For segmented alerts aligned with Kalshi categories:
 
 ---
 
+## P0 Data Sources (Sustainable, No API Keys)
+
+### ESPN Sports Odds (`fetchers/espn-odds.ts`)
+
+Public ESPN API for real-time sports odds without API key requirements:
+
+```typescript
+// Supported sports
+const ESPN_SPORTS = ['nfl', 'nba', 'nhl', 'mlb', 'ncaaf', 'ncaab'];
+
+// Fetches moneylines, spreads, and over/unders
+const odds = await fetchSportsOddsESPN('nfl');
+// Returns: { homeTeam, awayTeam, spread, homeML, awayML, overUnder, ... }
+```
+
+**Edge Detection:**
+- Sharp vs Square money detection (line movement analysis)
+- Consensus comparison with Kalshi prices
+- Injury news correlation with line moves
+
+### CDC Health Surveillance (`fetchers/cdc-surveillance.ts`)
+
+CDC NWSS (National Wastewater Surveillance System) data:
+
+```typescript
+// Wastewater leads reported cases by 7-14 days
+const wastewater = await fetchWastewaterData();
+// Returns: { region, pathogen, level, percentChange, trend }
+
+// FluView weekly surveillance
+const flu = await fetchFluData();
+// Returns: { region, week, iliRate, positivityRate, activityLevel }
+```
+
+**Edge Detection:**
+- Wastewater trend → case count prediction
+- Compare CDC projections vs market expectations
+- Historical pattern matching for seasonal diseases
+
+### Crypto Funding Rates (`fetchers/crypto-funding.ts`)
+
+Hyperliquid DeFi perpetuals (no geo-blocking, works in US):
+
+```typescript
+// Funding rates + open interest
+const funding = await fetchFundingRates();
+// Returns: { symbol, weightedFundingRate, totalOpenInterest, extremeLevel, contrarian }
+
+// Fear & Greed Index (contrarian indicator)
+const fg = await fetchFearGreedIndex();
+// Returns: { value, classification, previousValue }
+```
+
+**Edge Detection:**
+- Extreme funding (>0.1% or <-0.1%) = contrarian signal
+- Fear & Greed extremes (<20 or >80) = reversal likelihood
+- Open interest divergence from price
+
+### Fed Nowcasts (`fetchers/fed-nowcasts.ts`)
+
+Real-time economic projections from Federal Reserve banks:
+
+```typescript
+// Atlanta Fed GDPNow
+const gdp = await fetchGDPNow();
+// Returns: { estimate, quarter, year, previousEstimate, change }
+
+// Cleveland Fed Inflation Nowcast
+const inflation = await fetchInflationNowcast();
+// Returns: { estimate, previousEstimate, trend }
+```
+
+**Edge Detection:**
+- GDPNow vs market GDP expectations
+- Inflation nowcast vs Fed target/market pricing
+- Revision direction momentum
+
+### Whale Performance Tracking (`edge/whale-performance.ts`)
+
+Historical win rate tracking for Polymarket whales by category:
+
+```typescript
+// Record whale predictions
+recordWhalePrediction(wallet, market, category, side, entryPrice);
+
+// Get category-specific confidence boost
+const boost = getWhaleEdgeBoost(wallet, 'crypto');
+// Returns: { boost: 1.2, reasoning: "70% win rate in crypto (15 predictions)" }
+
+// Leaderboard by category
+const leaders = getWhaleLeaderboard('politics', minPredictions=5);
+```
+
+**Edge Detection:**
+- Weight whale signals by their domain expertise
+- Fade whales with poor category-specific records
+- Identify specialists (e.g., politics-only traders)
+
+---
+
+## Current Channel Audit (Jan 2026)
+
+| Channel | Status | Signals | Notes |
+|---------|--------|---------|-------|
+| Sports | ✅ Working | ESPN odds (64 games), injury signals | No longer needs ODDS_API_KEY |
+| Weather | ⚠️ Limited | 0 open markets | Kalshi weather series appear inactive |
+| Economics | ✅ Working | GDPNow, inflation nowcasts | KXGDP/KXCPI series may be seasonal |
+| Mentions | ✅ Strong | Fed + earnings keywords | 95% edge on some earnings mentions |
+| Entertainment | ⚠️ Limited | RT movies unreleased | Need box office prediction data |
+| Health | ✅ Working | CDC wastewater, measles edges | Wastewater leads cases 7-14 days |
+| Politics | ⚠️ Limited | Polling data sparse | Need 538/RCP integration |
+| Crypto | ✅ Working | Funding rates, Fear/Greed, cross-platform | Hyperliquid + divergence detection |
+| Whale Conviction | ✅ Strong | 47+ signals per scan | Now with performance tracking |
+| New Markets | ✅ Working | 400+ new markets detected | Early mover edge calculation |
+
+---
+
 ## Roadmap
 
-### Near-term
-- [ ] Add more sports events (Olympics, World Cup, major tournaments)
-- [ ] Integrate Twitter/X sentiment for real-time signals
-- [ ] Add backtesting framework for strategy validation
-- [ ] Implement paper trading mode
+### Completed
+- [x] ESPN sports odds (replaces The Odds API)
+- [x] CDC wastewater surveillance
+- [x] Crypto funding rates via Hyperliquid
+- [x] Fed nowcasts (GDPNow, inflation)
+- [x] Whale historical performance tracking
+- [x] Cross-platform matching improvements
+- [x] Multi-channel Discord routing
+
+### Current Sprint (P1)
+- [ ] Integrate ESPN odds into sports edge pipeline
+- [ ] Add CDC wastewater to health channel alerts
+- [ ] Implement funding rate contrarian signals
+- [ ] Wire up whale performance boosts to conviction scoring
+- [ ] Add Fed transcript historical baselines
+
+### Near-term (P2)
+- [ ] 538/RCP polling aggregation for politics
+- [ ] Box office prediction models for entertainment
+- [ ] NWS forecast comparison for weather
+- [ ] Sharp money steam move detection
 
 ### Medium-term
 - [ ] Machine learning model for edge prediction
 - [ ] Automated trade execution via Kalshi API
 - [ ] Portfolio tracking and P&L reporting
-- [ ] Mobile push notifications
+- [ ] Backtesting framework for strategy validation
 
 ### Long-term
 - [ ] Multi-exchange arbitrage detection
 - [ ] Custom market creation recommendations
 - [ ] Community sentiment aggregation
-- [ ] API for external integrations
+- [ ] Mobile push notifications
 
 ---
 
@@ -330,3 +477,5 @@ For segmented alerts aligned with Kalshi categories:
 Calibration data stored in `data/`:
 - `predictions.json` - All prediction records
 - `calibration.json` - Latest calibration report
+- `whale_predictions.json` - Whale prediction history
+- `whale_performance.json` - Whale win rates by category
