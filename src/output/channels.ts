@@ -489,7 +489,12 @@ export async function sendNewMarketAlert(market: NewMarket): Promise<void> {
  * Check if a market is multi-outcome (has subtitle indicating specific outcome)
  */
 function isMultiOutcomeMarket(opp: EdgeOpportunity): boolean {
-  return !!(opp.market.subtitle || opp.signals.earnings || opp.signals.fedSpeech);
+  return !!(
+    opp.market.subtitle ||
+    opp.signals.earnings ||
+    opp.signals.fedSpeech ||
+    opp.signals.entertainment  // RT thresholds are multi-outcome
+  );
 }
 
 /**
@@ -502,6 +507,9 @@ function getGroupingKey(opp: EdgeOpportunity): string {
   }
   if (opp.signals.fedSpeech) {
     return `fed:speech`;
+  }
+  if (opp.signals.entertainment) {
+    return `entertainment:${opp.signals.entertainment.movieTitle}`;
   }
   // For other multi-outcome, group by the base market title
   return `market:${opp.market.title}`;
@@ -531,6 +539,16 @@ function formatOutcomeLine(opp: EdgeOpportunity): string[] {
     ];
   }
 
+  if (opp.signals.entertainment) {
+    const ent = opp.signals.entertainment;
+    const scoreIcon = ent.currentScore >= 60 ? '🍅' : '🤢';
+    const bufferText = ent.buffer > 0 ? `+${ent.buffer}` : `${ent.buffer}`;
+    return [
+      `${urgencyMark}${dirEmoji} **Above ${ent.threshold}%** → ${opp.direction} @ ${price.toFixed(0)}¢ (Edge: +${(opp.edge * 100).toFixed(0)}%)`,
+      `   _Current: ${scoreIcon}${ent.currentScore}% | Buffer: ${bufferText} points_`,
+    ];
+  }
+
   // Generic multi-outcome (politics, etc.)
   const outcome = opp.market.subtitle ?? 'Unknown outcome';
   return [
@@ -539,8 +557,52 @@ function formatOutcomeLine(opp: EdgeOpportunity): string[] {
 }
 
 /**
+ * Generate recommendation text explaining why a specific option is best
+ */
+function generateRecommendation(opps: EdgeOpportunity[], key: string): string[] {
+  if (opps.length === 0) return [];
+
+  const best = opps[0];  // Already sorted by edge
+  const lines: string[] = [];
+
+  if (key.startsWith('entertainment:')) {
+    const ent = best.signals.entertainment;
+    if (ent) {
+      lines.push('**💡 Recommendation:**');
+      if (ent.buffer > 0) {
+        lines.push(`Current score (${ent.currentScore}%) is already ${ent.buffer} points ABOVE the ${ent.threshold}% threshold.`);
+        lines.push(`With ${ent.reviewCount ?? 'many'} reviews in, the score is stable. Best value is **Above ${ent.threshold}%** at ${(best.market.price * 100).toFixed(0)}¢.`);
+      } else {
+        lines.push(`Current score (${ent.currentScore}%) is ${Math.abs(ent.buffer)} points BELOW the ${ent.threshold}% threshold.`);
+        lines.push(`Market may be overpriced - consider **BUY NO** on this threshold.`);
+      }
+    }
+  } else if (key.startsWith('earnings:')) {
+    const earn = best.signals.earnings;
+    if (earn) {
+      lines.push('**💡 Best Value:**');
+      lines.push(`"${earn.keyword}" has ${(earn.impliedProbability * 100).toFixed(0)}% historical mention probability but trades at only ${(best.market.price * 100).toFixed(0)}¢.`);
+      lines.push(`Edge of +${(best.edge * 100).toFixed(0)}% makes this the top pick.`);
+    }
+  } else if (key.startsWith('fed:')) {
+    const fed = best.signals.fedSpeech;
+    if (fed) {
+      lines.push('**💡 Best Value:**');
+      lines.push(`"${fed.keyword}" appears in ${(fed.historicalFrequency * 100).toFixed(0)}% of Fed transcripts historically.`);
+      lines.push(`Market at ${(best.market.price * 100).toFixed(0)}¢ offers +${(best.edge * 100).toFixed(0)}% edge.`);
+    }
+  } else {
+    // Generic multi-outcome
+    lines.push('**💡 Top Pick:**');
+    lines.push(`"${best.market.subtitle ?? 'This option'}" offers the largest edge at +${(best.edge * 100).toFixed(0)}%.`);
+  }
+
+  return lines;
+}
+
+/**
  * Format and send grouped multi-outcome alerts
- * Groups markets with multiple outcomes (earnings, fed speech, elections) into single messages
+ * Groups markets with multiple outcomes (earnings, fed speech, RT thresholds) into single messages
  */
 export async function sendGroupedMultiOutcomeAlerts(
   opportunities: EdgeOpportunity[]
@@ -571,6 +633,7 @@ export async function sendGroupedMultiOutcomeAlerts(
     // Determine header based on group type
     let header: string;
     let channel: DiscordChannel;
+    let contextLine = '';
 
     if (key.startsWith('earnings:')) {
       const company = key.replace('earnings:', '');
@@ -579,18 +642,42 @@ export async function sendGroupedMultiOutcomeAlerts(
     } else if (key.startsWith('fed:')) {
       header = `🏛️ **Fed Speech Keyword Analysis**`;
       channel = 'mentions';
+    } else if (key.startsWith('entertainment:')) {
+      const movieTitle = key.replace('entertainment:', '');
+      const ent = opps[0].signals.entertainment;
+      const scoreIcon = ent && ent.currentScore >= 60 ? '🍅' : '🤢';
+      header = `🎬 **${movieTitle}** - Rotten Tomatoes`;
+      contextLine = `Current Score: ${scoreIcon} **${ent?.currentScore ?? '?'}%** (${ent?.reviewCount ?? '?'} reviews)`;
+      channel = 'entertainment';
     } else {
       // Generic multi-outcome (politics, etc.)
       header = `📋 **${opps[0].market.title}**`;
       channel = routeOpportunity(opps[0]);
     }
 
-    const lines: string[] = [header, ''];
+    const lines: string[] = [header];
+    if (contextLine) lines.push(contextLine);
+    lines.push('');
 
-    // Show all outcomes
+    // Add recommendation explaining WHY
+    const recommendation = generateRecommendation(opps, key);
+    if (recommendation.length > 0) {
+      lines.push(...recommendation);
+      lines.push('');
+    }
+
+    lines.push('**All Options (ranked by edge):**');
+
+    // Show all outcomes with rank
+    let rank = 1;
     for (const opp of opps) {
-      lines.push(...formatOutcomeLine(opp));
+      const rankEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+      const outcomeLines = formatOutcomeLine(opp);
+      // Prepend rank to first line
+      outcomeLines[0] = `${rankEmoji} ${outcomeLines[0]}`;
+      lines.push(...outcomeLines);
       sentIds.add(`${opp.market.platform}:${opp.market.id}`);
+      rank++;
     }
 
     lines.push('');
