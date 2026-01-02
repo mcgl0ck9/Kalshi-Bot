@@ -74,6 +74,7 @@ import {
   sendEdgeAlert,
   sendMacroAlert,
   sendToChannel,
+  sendGroupedMultiOutcomeAlerts,
 } from './output/channels.js';
 
 // ML scoring
@@ -1798,8 +1799,21 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // ========== STEP 8: SEND ALERTS ==========
     logger.step(8, 'Sending alerts...');
 
-    // Send top 5 ML-ranked opportunities to appropriate channels
-    for (const opp of scoredOpportunities.slice(0, 5)) {
+    // First, send grouped multi-outcome alerts (earnings, fed speech, elections with multiple options)
+    // This groups all edges for the same company/market into a single message
+    const { sent: groupedIds, grouped: groupedCount } = await sendGroupedMultiOutcomeAlerts(scoredOpportunities);
+    if (groupedCount > 0) {
+      logger.info(`  Sent ${groupedCount} grouped multi-outcome alerts (${groupedIds.size} individual edges)`);
+      stats.alertsSent += groupedCount;
+    }
+
+    // Send remaining top opportunities that weren't part of a group
+    const ungroupedOpps = scoredOpportunities.filter(opp => {
+      const key = `${opp.market.platform}:${opp.market.id}`;
+      return !groupedIds.has(key);
+    });
+
+    for (const opp of ungroupedOpps.slice(0, 5)) {
       try {
         await sendEdgeAlert(opp);
         stats.alertsSent++;

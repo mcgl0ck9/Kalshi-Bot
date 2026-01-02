@@ -486,6 +486,129 @@ export async function sendNewMarketAlert(market: NewMarket): Promise<void> {
 }
 
 /**
+ * Check if a market is multi-outcome (has subtitle indicating specific outcome)
+ */
+function isMultiOutcomeMarket(opp: EdgeOpportunity): boolean {
+  return !!(opp.market.subtitle || opp.signals.earnings || opp.signals.fedSpeech);
+}
+
+/**
+ * Get grouping key for multi-outcome markets
+ * Groups by base market title or company
+ */
+function getGroupingKey(opp: EdgeOpportunity): string {
+  if (opp.signals.earnings) {
+    return `earnings:${opp.signals.earnings.company}`;
+  }
+  if (opp.signals.fedSpeech) {
+    return `fed:speech`;
+  }
+  // For other multi-outcome, group by the base market title
+  return `market:${opp.market.title}`;
+}
+
+/**
+ * Format a single outcome line for grouped display
+ */
+function formatOutcomeLine(opp: EdgeOpportunity): string[] {
+  const price = opp.market.price * 100;
+  const dirEmoji = opp.direction === 'BUY YES' ? '🟢' : '🔴';
+  const urgencyMark = opp.urgency === 'critical' ? '🔥' : opp.urgency === 'standard' ? '⚡' : '';
+
+  if (opp.signals.earnings) {
+    const e = opp.signals.earnings;
+    return [
+      `${urgencyMark}${dirEmoji} **"${e.keyword}"** → ${opp.direction} @ ${price.toFixed(0)}¢ (Edge: +${(opp.edge * 100).toFixed(0)}%)`,
+      `   _${(e.impliedProbability * 100).toFixed(0)}% chance of mention_`,
+    ];
+  }
+
+  if (opp.signals.fedSpeech) {
+    const f = opp.signals.fedSpeech;
+    return [
+      `${urgencyMark}${dirEmoji} **"${f.keyword}"** → ${opp.direction} @ ${price.toFixed(0)}¢ (Edge: +${(opp.edge * 100).toFixed(0)}%)`,
+      `   _Appears ${(f.historicalFrequency * 100).toFixed(0)}% of time in transcripts_`,
+    ];
+  }
+
+  // Generic multi-outcome (politics, etc.)
+  const outcome = opp.market.subtitle ?? 'Unknown outcome';
+  return [
+    `${urgencyMark}${dirEmoji} **${outcome}** → ${opp.direction} @ ${price.toFixed(0)}¢ (Edge: +${(opp.edge * 100).toFixed(0)}%)`,
+  ];
+}
+
+/**
+ * Format and send grouped multi-outcome alerts
+ * Groups markets with multiple outcomes (earnings, fed speech, elections) into single messages
+ */
+export async function sendGroupedMultiOutcomeAlerts(
+  opportunities: EdgeOpportunity[]
+): Promise<{ sent: Set<string>; grouped: number }> {
+  const sentIds = new Set<string>();
+
+  // Filter to multi-outcome markets
+  const multiOutcome = opportunities.filter(isMultiOutcomeMarket);
+
+  if (multiOutcome.length === 0) return { sent: sentIds, grouped: 0 };
+
+  // Group by key
+  const groups = new Map<string, EdgeOpportunity[]>();
+  for (const opp of multiOutcome) {
+    const key = getGroupingKey(opp);
+    const list = groups.get(key) ?? [];
+    list.push(opp);
+    groups.set(key, list);
+  }
+
+  let groupedCount = 0;
+
+  // Send one message per group
+  for (const [key, opps] of groups) {
+    // Sort by edge size (highest first)
+    opps.sort((a, b) => b.edge - a.edge);
+
+    // Determine header based on group type
+    let header: string;
+    let channel: DiscordChannel;
+
+    if (key.startsWith('earnings:')) {
+      const company = key.replace('earnings:', '');
+      header = `📊 **${company} Earnings Call Keywords**`;
+      channel = 'mentions';
+    } else if (key.startsWith('fed:')) {
+      header = `🏛️ **Fed Speech Keyword Analysis**`;
+      channel = 'mentions';
+    } else {
+      // Generic multi-outcome (politics, etc.)
+      header = `📋 **${opps[0].market.title}**`;
+      channel = routeOpportunity(opps[0]);
+    }
+
+    const lines: string[] = [header, ''];
+
+    // Show all outcomes
+    for (const opp of opps) {
+      lines.push(...formatOutcomeLine(opp));
+      sentIds.add(`${opp.market.platform}:${opp.market.id}`);
+    }
+
+    lines.push('');
+
+    // Add link
+    if (opps[0].market.url) {
+      const baseUrl = opps[0].market.url.replace(/\/[^/]+$/, '');
+      lines.push(`[View All Options](${baseUrl})`);
+    }
+
+    await sendToChannel(channel, lines.join('\n'));
+    groupedCount++;
+  }
+
+  return { sent: sentIds, grouped: groupedCount };
+}
+
+/**
  * Send daily digest
  */
 export async function sendDailyDigest(stats: {
