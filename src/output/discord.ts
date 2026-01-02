@@ -135,7 +135,8 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
   } else if (signals.fedSpeech) {
     lines.push(`Fed transcripts: "${signals.fedSpeech.keyword}" appears ${(signals.fedSpeech.historicalFrequency * 100).toFixed(0)}% of time`);
   } else if (signals.earnings) {
-    lines.push(`${signals.earnings.company}: "${signals.earnings.keyword}" -> ${(signals.earnings.impliedProbability * 100).toFixed(0)}% implied`);
+    lines.push(`**Bet:** Will "${signals.earnings.keyword}" be mentioned?`);
+    lines.push(`Estimate: ${(signals.earnings.impliedProbability * 100).toFixed(0)}% chance of mention`);
   } else if (signals.enhancedSports) {
     const s = signals.enhancedSports;
     lines.push(`${s.awayTeam} @ ${s.homeTeam}`);

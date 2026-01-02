@@ -465,14 +465,17 @@ export async function findEarningsEdges(
           }
 
           const title = market.title as string ?? '';
-          const subtitle = market.subtitle as string ?? '';
+          // For earnings markets, show the keyword as the outcome
+          // e.g., "What will JPMorgan say?" → Outcome: "regulation"
+          const keywordDisplay = keyword.charAt(0).toUpperCase() + keyword.slice(1);
 
           edges.push({
             market: {
               platform: 'kalshi' as const,
               id: ticker,
               ticker,
-              title: subtitle ? `${title} ${subtitle}` : title,
+              title,
+              subtitle: `Will mention "${keywordDisplay}"`,  // Show the keyword as the outcome
               description: market.rules_primary as string,
               category: 'other',
               price: marketPrice,

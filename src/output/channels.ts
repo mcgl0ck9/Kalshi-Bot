@@ -266,7 +266,11 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
   } else if (signals.fedSpeech) {
     lines.push(`Historical Fed transcripts show "${signals.fedSpeech.keyword}" appears ${(signals.fedSpeech.historicalFrequency * 100).toFixed(0)}% of the time`);
   } else if (signals.earnings) {
-    lines.push(`${signals.earnings.company} earnings: "${signals.earnings.keyword}" analysis suggests ${(signals.earnings.impliedProbability * 100).toFixed(0)}% probability`);
+    lines.push(`**Bet:** Will "${signals.earnings.keyword}" be mentioned in ${signals.earnings.company} earnings call?`);
+    lines.push(`Our estimate: ${(signals.earnings.impliedProbability * 100).toFixed(0)}% chance of mention`);
+    if (signals.earnings.reasoning) {
+      lines.push(`${signals.earnings.reasoning}`);
+    }
   } else if (signals.enhancedSports) {
     const s = signals.enhancedSports;
     lines.push(`${s.awayTeam} @ ${s.homeTeam}`);
