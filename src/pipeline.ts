@@ -1371,9 +1371,12 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // 6.5.13b: Crypto Funding Rates (contrarian signals from Hyperliquid)
     logger.info('  Checking crypto funding rates...');
     try {
-      const [fundingRates, fearGreed] = await Promise.all([
+      // Fetch dedicated crypto markets (KXBTC, KXBTCD, KXETH, etc.)
+      const { fetchKalshiCryptoMarkets } = await import('./exchanges/index.js');
+      const [fundingRates, fearGreed, dedicatedCryptoMarkets] = await Promise.all([
         fetchFundingRates(),
         fetchFearGreedIndex(),
+        fetchKalshiCryptoMarkets(),
       ]);
 
       if (fundingRates.length > 0) {
@@ -1385,14 +1388,25 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
           logger.info(`    ⚠️ ${f.symbol}: ${f.weightedFundingRate.toFixed(4)}% funding (${f.extremeLevel}) - ${f.contrarian} signal`);
         }
 
-        // Find crypto markets and apply funding rate signals
-        const cryptoMarkets = kalshiMarkets.filter(m => {
+        // Find crypto markets from BOTH general markets AND dedicated crypto fetch
+        const generalCryptoMarkets = kalshiMarkets.filter(m => {
           const title = m.title?.toLowerCase() ?? '';
           return title.includes('bitcoin') || title.includes('btc') ||
                  title.includes('ethereum') || title.includes('eth') ||
                  title.includes('solana') || title.includes('sol') ||
                  title.includes('crypto') || title.includes('doge');
         });
+
+        // Merge and deduplicate
+        const seenCrypto = new Set<string>();
+        const cryptoMarkets = [...generalCryptoMarkets, ...dedicatedCryptoMarkets].filter(m => {
+          const key = m.ticker ?? m.id;
+          if (seenCrypto.has(key)) return false;
+          seenCrypto.add(key);
+          return true;
+        });
+
+        logger.info(`    Found ${cryptoMarkets.length} crypto markets (${generalCryptoMarkets.length} general + ${dedicatedCryptoMarkets.length} dedicated)`);
 
         for (const market of cryptoMarkets) {
           const title = market.title?.toLowerCase() ?? '';
@@ -1441,10 +1455,21 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       if (fearGreed) {
         logger.info(`    Fear & Greed: ${fearGreed.value} (${fearGreed.classification})`);
 
-        // Apply Fear & Greed to BTC markets specifically
-        const btcMarkets = kalshiMarkets.filter(m => {
+        // Apply Fear & Greed to BTC markets specifically (including dedicated fetch)
+        const generalBtcMarkets = kalshiMarkets.filter(m => {
           const title = m.title?.toLowerCase() ?? '';
           return title.includes('bitcoin') || title.includes('btc');
+        });
+        const dedicatedBtcMarkets = dedicatedCryptoMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('bitcoin') || title.includes('btc');
+        });
+        const seenBtc = new Set<string>();
+        const btcMarkets = [...generalBtcMarkets, ...dedicatedBtcMarkets].filter(m => {
+          const key = m.ticker ?? m.id;
+          if (seenBtc.has(key)) return false;
+          seenBtc.add(key);
+          return true;
         });
 
         for (const market of btcMarkets) {
@@ -1486,20 +1511,38 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
     // 6.5.13c: Fed Nowcasts (GDPNow, Inflation estimates)
     logger.info('  Checking Fed nowcasts...');
     try {
-      const [gdpNow, inflationNow] = await Promise.all([
+      // Fetch dedicated economics markets (KXGDP, KXCPI, KXFED, etc.)
+      const { fetchKalshiEconomicsMarkets } = await import('./exchanges/index.js');
+      const [gdpNow, inflationNow, dedicatedEconMarkets] = await Promise.all([
         fetchGDPNow(),
         fetchInflationNowcast(),
+        fetchKalshiEconomicsMarkets(),
       ]);
 
       if (gdpNow) {
         logger.info(`    GDPNow ${gdpNow.quarter}: ${gdpNow.estimate.toFixed(2)}%`);
 
-        // Find GDP markets
-        const gdpMarkets = kalshiMarkets.filter(m => {
+        // Find GDP markets from BOTH general markets AND dedicated fetch
+        const generalGdpMarkets = kalshiMarkets.filter(m => {
           const title = m.title?.toLowerCase() ?? '';
           return title.includes('gdp') || title.includes('growth') ||
                  (title.includes('recession') && !title.includes('yield'));
         });
+        const dedicatedGdpMarkets = dedicatedEconMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('gdp') || title.includes('growth');
+        });
+
+        // Merge and deduplicate
+        const seenGdp = new Set<string>();
+        const gdpMarkets = [...generalGdpMarkets, ...dedicatedGdpMarkets].filter(m => {
+          const key = m.ticker ?? m.id;
+          if (seenGdp.has(key)) return false;
+          seenGdp.add(key);
+          return true;
+        });
+
+        logger.info(`    Found ${gdpMarkets.length} GDP markets (${generalGdpMarkets.length} general + ${dedicatedGdpMarkets.length} dedicated)`);
 
         for (const market of gdpMarkets) {
           // Extract threshold from market title (e.g., "GDP above 2%")
@@ -1537,12 +1580,27 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
       if (inflationNow) {
         logger.info(`    Inflation nowcast: ${inflationNow.headline.toFixed(2)}%`);
 
-        // Find inflation/CPI markets
-        const inflationMarkets = kalshiMarkets.filter(m => {
+        // Find inflation/CPI markets from BOTH general markets AND dedicated fetch
+        const generalInflationMarkets = kalshiMarkets.filter(m => {
           const title = m.title?.toLowerCase() ?? '';
           return title.includes('cpi') || title.includes('inflation') ||
                  title.includes('pce') || title.includes('price');
         });
+        const dedicatedInflationMarkets = dedicatedEconMarkets.filter(m => {
+          const title = m.title?.toLowerCase() ?? '';
+          return title.includes('cpi') || title.includes('inflation') || title.includes('pce');
+        });
+
+        // Merge and deduplicate
+        const seenInflation = new Set<string>();
+        const inflationMarkets = [...generalInflationMarkets, ...dedicatedInflationMarkets].filter(m => {
+          const key = m.ticker ?? m.id;
+          if (seenInflation.has(key)) return false;
+          seenInflation.add(key);
+          return true;
+        });
+
+        logger.info(`    Found ${inflationMarkets.length} inflation markets`);
 
         for (const market of inflationMarkets) {
           // Extract threshold from market title (e.g., "CPI above 3%")

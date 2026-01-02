@@ -128,17 +128,20 @@ export async function fetchFundingRates(): Promise<FundingAggregate[]> {
         : avgRate;
 
       // Classify funding level
+      // Thresholds lowered to catch more edge opportunities
       let extremeLevel: FundingAggregate['extremeLevel'] = 'neutral';
       let contrarian: FundingAggregate['contrarian'] = null;
 
-      if (weightedRate > 0.1) {
+      if (weightedRate > 0.08) {
         extremeLevel = 'very_bullish';
         contrarian = 'SELL';
-      } else if (weightedRate > 0.05) {
+      } else if (weightedRate > 0.03) {
         extremeLevel = 'bullish';
-      } else if (weightedRate < -0.05) {
+        contrarian = 'SELL';  // Added: elevated funding generates signal
+      } else if (weightedRate < -0.03) {
         extremeLevel = 'bearish';
-      } else if (weightedRate < -0.1) {
+        contrarian = 'BUY';  // Added: elevated negative funding generates signal
+      } else if (weightedRate < -0.08) {
         extremeLevel = 'very_bearish';
         contrarian = 'BUY';
       }
@@ -221,15 +224,18 @@ async function fetchHyperliquidFunding(): Promise<FundingAggregate[]> {
       let contrarian: FundingAggregate['contrarian'] = null;
 
       // Thresholds: normal funding is ~0.01% (0.0001)
-      // > 0.05% is elevated, > 0.1% is extreme
-      if (rate > 0.1) {
+      // > 0.03% is elevated (generates signal), > 0.08% is extreme
+      // Lowered from 0.1% to catch more edge opportunities
+      if (rate > 0.08) {
         extremeLevel = 'very_bullish';
         contrarian = 'SELL';
-      } else if (rate > 0.05) {
+      } else if (rate > 0.03) {
         extremeLevel = 'bullish';
-      } else if (rate < -0.05) {
+        contrarian = 'SELL';  // Added: elevated funding also generates signal
+      } else if (rate < -0.03) {
         extremeLevel = 'bearish';
-      } else if (rate < -0.1) {
+        contrarian = 'BUY';  // Added: elevated negative funding generates signal
+      } else if (rate < -0.08) {
         extremeLevel = 'very_bearish';
         contrarian = 'BUY';
       }
@@ -383,35 +389,42 @@ export function analyzeFearGreedEdge(
   kalshiPrice: number,
   isUpMarket: boolean
 ): CryptoEdgeSignal | null {
-  // Only signal on extreme readings
+  // Signal on fear or greed readings (not just extreme)
+  // Lowered thresholds to catch more edge opportunities
   if (fearGreed.classification !== 'extreme_fear' &&
-      fearGreed.classification !== 'extreme_greed') {
+      fearGreed.classification !== 'fear' &&
+      fearGreed.classification !== 'extreme_greed' &&
+      fearGreed.classification !== 'greed') {
     return null;
   }
 
   let direction: 'BUY YES' | 'BUY NO';
   let reasoning: string;
 
+  const isFearish = fearGreed.classification === 'extreme_fear' || fearGreed.classification === 'fear';
+  const isGreedish = fearGreed.classification === 'extreme_greed' || fearGreed.classification === 'greed';
+  const intensityLabel = fearGreed.classification.includes('extreme') ? 'Extreme ' : '';
+
   if (isUpMarket) {
-    if (fearGreed.classification === 'extreme_fear') {
+    if (isFearish) {
       direction = 'BUY YES';
-      reasoning = `Fear & Greed at ${fearGreed.value} (Extreme Fear) - historically contrarian bullish signal`;
+      reasoning = `Fear & Greed at ${fearGreed.value} (${intensityLabel}Fear) - contrarian bullish signal`;
     } else {
       direction = 'BUY NO';
-      reasoning = `Fear & Greed at ${fearGreed.value} (Extreme Greed) - historically contrarian bearish signal`;
+      reasoning = `Fear & Greed at ${fearGreed.value} (${intensityLabel}Greed) - contrarian bearish signal`;
     }
   } else {
-    if (fearGreed.classification === 'extreme_fear') {
+    if (isFearish) {
       direction = 'BUY NO';
-      reasoning = `Extreme fear suggests more upside than downside`;
+      reasoning = `Fear suggests more upside than downside`;
     } else {
       direction = 'BUY YES';
-      reasoning = `Extreme greed suggests correction likely`;
+      reasoning = `Greed suggests correction likely`;
     }
   }
 
-  // Strength based on how extreme
-  const strength = fearGreed.classification === 'extreme_fear'
+  // Strength based on how extreme (adjusted for wider range)
+  const strength = isFearish
     ? (50 - fearGreed.value) / 50
     : (fearGreed.value - 50) / 50;
 

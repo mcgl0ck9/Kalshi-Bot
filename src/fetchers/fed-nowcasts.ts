@@ -260,7 +260,7 @@ export function analyzeGDPEdge(
 
   const edge = impliedProb - marketPrice;
 
-  if (Math.abs(edge) < 0.05) return null;  // Minimum 5% edge
+  if (Math.abs(edge) < 0.03) return null;  // Minimum 3% edge (lowered from 5%)
 
   return {
     indicatorType: 'gdp',
@@ -290,7 +290,7 @@ export function analyzeInflationEdge(
 
   const edge = impliedProb - marketPrice;
 
-  if (Math.abs(edge) < 0.05) return null;
+  if (Math.abs(edge) < 0.03) return null;  // Minimum 3% edge (lowered from 5%)
 
   return {
     indicatorType: 'cpi',

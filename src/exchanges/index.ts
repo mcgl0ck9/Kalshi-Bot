@@ -188,7 +188,9 @@ export async function fetchKalshiSportsMarkets(): Promise<Market[]> {
  */
 const ACTIVE_SERIES = [
   // Crypto - verified to have open markets
-  'KXBTC', 'KXBTCD', 'KXETH', 'KXDOGE',
+  'KXBTC', 'KXBTCD', 'KXETH', 'KXDOGE', 'KXETHUSD',
+  // Economics - GDP, CPI, Fed rates (may be seasonal)
+  'KXGDP', 'KXCPI', 'KXFED', 'KXJOBS', 'KXINFLATION', 'KXRECESSION',
   // Health
   'KXMEASLES',
   // Entertainment - from series scan
@@ -777,4 +779,136 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
   }
 
   return 'other';
+}
+
+/**
+ * Fetch crypto threshold markets from Kalshi for funding rate analysis
+ * These are "above/below" markets that can use funding rate signals
+ */
+export async function fetchKalshiCryptoMarkets(): Promise<Market[]> {
+  try {
+    if (!hasKalshiAuth()) {
+      logger.debug('Skipping crypto markets fetch - no Kalshi auth configured');
+      return [];
+    }
+
+    const allMarkets: Market[] = [];
+    const cryptoSeries = ['KXBTC', 'KXBTCD', 'KXETH', 'KXETHUSD', 'KXDOGE'];
+
+    logger.info(`Fetching crypto markets from ${cryptoSeries.length} series`);
+
+    for (const series of cryptoSeries) {
+      try {
+        const data = await kalshiFetchJson<{ markets?: unknown[] }>(
+          `/trade-api/v2/markets?series_ticker=${series}&limit=100&status=open`
+        );
+
+        if (!data?.markets) continue;
+
+        for (const m of data.markets) {
+          const market = m as Record<string, unknown>;
+          const ticker = market.ticker as string ?? '';
+          const title = market.title as string ?? '';
+          const subtitle = market.subtitle as string ?? '';
+          const status = market.status as string ?? '';
+
+          if (status !== 'active' && status !== 'open') continue;
+
+          // Combine title and subtitle
+          const fullTitle = subtitle ? `${title} ${subtitle}` : title;
+          const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+
+          allMarkets.push({
+            platform: 'kalshi' as const,
+            id: ticker,
+            ticker,
+            title: fullTitle,
+            description: market.rules_primary as string,
+            category: 'crypto' as MarketCategory,
+            price: yesPrice / 100,
+            volume: (market.volume as number) ?? 0,
+            volume24h: (market.volume_24h as number) ?? 0,
+            liquidity: (market.open_interest as number) ?? 0,
+            url: buildKalshiUrl(ticker, title),
+            closeTime: market.close_time as string,
+          });
+        }
+      } catch (e) {
+        logger.debug(`Error fetching ${series}: ${e}`);
+      }
+    }
+
+    logger.info(`Fetched ${allMarkets.length} Kalshi crypto markets`);
+    return allMarkets;
+  } catch (error) {
+    logger.error(`Kalshi crypto markets fetch error: ${error}`);
+    return [];
+  }
+}
+
+/**
+ * Fetch economics markets from Kalshi for GDP/CPI/Fed rate analysis
+ */
+export async function fetchKalshiEconomicsMarkets(): Promise<Market[]> {
+  try {
+    if (!hasKalshiAuth()) {
+      logger.debug('Skipping economics markets fetch - no Kalshi auth configured');
+      return [];
+    }
+
+    const allMarkets: Market[] = [];
+    const econSeries = ['KXGDP', 'KXCPI', 'KXFED', 'KXJOBS', 'KXINFLATION', 'KXRECESSION', 'KXPCE'];
+
+    logger.info(`Fetching economics markets from ${econSeries.length} series`);
+
+    for (const series of econSeries) {
+      try {
+        const data = await kalshiFetchJson<{ markets?: unknown[] }>(
+          `/trade-api/v2/markets?series_ticker=${series}&limit=100&status=open`
+        );
+
+        if (!data?.markets) continue;
+
+        for (const m of data.markets) {
+          const market = m as Record<string, unknown>;
+          const ticker = market.ticker as string ?? '';
+          const title = market.title as string ?? '';
+          const subtitle = market.subtitle as string ?? '';
+          const status = market.status as string ?? '';
+
+          if (status !== 'active' && status !== 'open') continue;
+
+          const fullTitle = subtitle ? `${title} ${subtitle}` : title;
+          const yesPrice = (market.yes_bid as number) ?? (market.last_price as number) ?? 0;
+
+          allMarkets.push({
+            platform: 'kalshi' as const,
+            id: ticker,
+            ticker,
+            title: fullTitle,
+            description: market.rules_primary as string,
+            category: 'macro' as MarketCategory,
+            price: yesPrice / 100,
+            volume: (market.volume as number) ?? 0,
+            volume24h: (market.volume_24h as number) ?? 0,
+            liquidity: (market.open_interest as number) ?? 0,
+            url: buildKalshiUrl(ticker, title),
+            closeTime: market.close_time as string,
+          });
+        }
+
+        if (data.markets.length > 0) {
+          logger.info(`  ${series}: ${data.markets.length} markets found`);
+        }
+      } catch (e) {
+        logger.debug(`Error fetching ${series}: ${e}`);
+      }
+    }
+
+    logger.info(`Fetched ${allMarkets.length} Kalshi economics markets`);
+    return allMarkets;
+  } catch (error) {
+    logger.error(`Kalshi economics markets fetch error: ${error}`);
+    return [];
+  }
 }
