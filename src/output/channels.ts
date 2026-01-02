@@ -248,8 +248,16 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
   lines.push('**Why:**');
 
   if (signals.measles) {
-    lines.push(`CDC has ${signals.measles.currentCases} cases YTD, projecting ${signals.measles.projectedYearEnd} by year end`);
-    lines.push(`Threshold is ${signals.measles.threshold} cases`);
+    // Use reasoning if available (handles early-year case properly)
+    if (signals.measles.reasoning) {
+      lines.push(signals.measles.reasoning);
+    } else if (signals.measles.weekNumber && signals.measles.weekNumber <= 8) {
+      // Early in year - probability based on historical patterns, not YTD
+      lines.push(`Week ${signals.measles.weekNumber} of year. Historical data suggests threshold of ${signals.measles.threshold} cases.`);
+    } else {
+      lines.push(`CDC: ${signals.measles.currentCases} cases YTD, projecting ${signals.measles.projectedYearEnd} by year end`);
+      lines.push(`Threshold is ${signals.measles.threshold} cases`);
+    }
   } else if (signals.fedSpeech) {
     lines.push(`Historical Fed transcripts show "${signals.fedSpeech.keyword}" appears ${(signals.fedSpeech.historicalFrequency * 100).toFixed(0)}% of the time`);
   } else if (signals.earnings) {

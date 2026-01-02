@@ -358,6 +358,20 @@ function generateReasoning(
 
     const casesNeeded = threshold - data.casesYTD;
     const weeksLeft = 52 - data.weekNumber;
+
+    // Early in year (weeks 1-8): probability based on historical data, not YTD projection
+    if (data.weekNumber <= 8) {
+      const baseline = Math.max(data.lastYearTotal, data.historicalAverage);
+      if (direction === 'buy_yes') {
+        return `Week ${data.weekNumber} of ${year}. Last year had ${data.lastYearTotal} cases. ` +
+          `Based on historical patterns, ${(cdcPrice * 100).toFixed(0)}% chance of exceeding ${threshold}. ` +
+          `Kalshi at ${(kalshiPrice * 100).toFixed(0)}¢.`;
+      } else {
+        return `Week ${data.weekNumber} of ${year}. Last year: ${data.lastYearTotal} cases, threshold: ${threshold}. ` +
+          `Market at ${(kalshiPrice * 100).toFixed(0)}¢ overstates probability vs ${(cdcPrice * 100).toFixed(0)}% historical.`;
+      }
+    }
+
     const avgWeekly = data.casesYTD / data.weekNumber;
 
     if (direction === 'buy_yes') {

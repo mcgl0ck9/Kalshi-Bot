@@ -951,6 +951,8 @@ export async function runPipeline(bankroll: number = BANKROLL): Promise<Pipeline
                 currentCases: edge.currentCases,
                 threshold: edge.threshold,
                 projectedYearEnd: edge.projectedYearEnd,
+                weekNumber: edge.weekNumber,
+                reasoning: edge.reasoning,
               },
             },
           });

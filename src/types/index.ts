@@ -111,6 +111,9 @@ export interface EdgeOpportunity {
       currentCases: number;
       threshold: number;
       projectedYearEnd: number;
+      weekNumber?: number;
+      lastYearTotal?: number;
+      reasoning?: string;
     };
     // Earnings call keyword analysis
     earnings?: {
