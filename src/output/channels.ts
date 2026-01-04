@@ -15,6 +15,7 @@ import type {
   NewMarket,
   MarketCategory,
 } from '../types/index.js';
+import { enhanceWithTimeDecay } from '../edge/time-decay-edge.js';
 
 // =============================================================================
 // CHANNEL CONFIGURATION
@@ -248,6 +249,52 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
   lines.push(`Edge:         +${(edge * 100).toFixed(1)}%`);
   lines.push('```');
 
+  // Time decay information (if available)
+  if (signals.timeDecay) {
+    const td = signals.timeDecay;
+    const urgencyEmoji = td.urgencyLevel === 'critical' ? '🚨'
+      : td.urgencyLevel === 'high' ? '⚠️'
+      : td.urgencyLevel === 'medium' ? '⏳'
+      : '📅';
+
+    const timeStr = td.daysToExpiry < 1
+      ? `${Math.round(td.hoursToExpiry)}h`
+      : `${Math.round(td.daysToExpiry)}d`;
+
+    lines.push('');
+    lines.push(`${urgencyEmoji} **Expires: ${timeStr}**`);
+
+    // Show theta decay if significant
+    if (td.theta > 0.05) {
+      const thetaPct = (td.theta * 100).toFixed(0);
+      lines.push(`📉 Theta: ${thetaPct}% (~${(td.thetaPerDay * 100).toFixed(2)}%/day)`);
+    }
+
+    // Adjusted edge if different from raw
+    if (Math.abs(td.adjustedEdge - edge) > 0.005) {
+      lines.push(`Edge after decay: +${(td.adjustedEdge * 100).toFixed(1)}%`);
+    }
+
+    // Order type recommendation
+    lines.push('');
+    if (td.recommendedOrderType === 'market') {
+      lines.push('💡 **Recommended: MARKET ORDER**');
+      lines.push('   Time is critical - prioritize fill over price');
+    } else if (td.limitOrderSuggestion) {
+      const limit = td.limitOrderSuggestion;
+      const limitPrice = (limit.price * 100).toFixed(0);
+      const fillProb = (limit.fillProbability * 100).toFixed(0);
+      lines.push('💡 **Order Options:**');
+      lines.push('```');
+      lines.push(`MARKET @ ${price.toFixed(0)}¢  → Instant fill, full edge`);
+      lines.push(`LIMIT  @ ${limitPrice}¢  → ${fillProb}% fill in ${limit.estimatedFillTime}`);
+      lines.push('```');
+      if (td.daysToExpiry > 3) {
+        lines.push('⚠️ Capital tied up until filled or cancelled');
+      }
+    }
+  }
+
   // Why this edge exists - be specific
   lines.push('');
   lines.push('**Why:**');
@@ -420,11 +467,14 @@ export async function sendEdgeAlert(opportunity: EdgeOpportunity): Promise<void>
   const marketKey = `${opportunity.market.platform}:${opportunity.market.id}`;
   sentMarkets.add(marketKey);
 
-  // Route to appropriate channel
-  const channel = routeOpportunity(opportunity);
+  // Enhance with time-decay information (limit orders, theta, urgency)
+  const enhancedOpportunity = enhanceWithTimeDecay(opportunity);
 
-  // Format the alert
-  const content = formatClearAlert(opportunity);
+  // Route to appropriate channel
+  const channel = routeOpportunity(enhancedOpportunity);
+
+  // Format the alert (now includes time-decay info)
+  const content = formatClearAlert(enhancedOpportunity);
 
   await sendToChannel(channel, content);
 }
