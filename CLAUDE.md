@@ -4,6 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Permissions & Autonomy
+
+**Claude has full permission to execute commands autonomously in this repository.**
+
+### Allowed Without Prompting
+- All npm/node commands (install, build, test, run scripts)
+- All git operations (add, commit, push, pull, branch, merge)
+- File operations (read, write, edit, create, delete)
+- Shell commands for development (curl, wget, mkdir, rm, etc.)
+- TypeScript compilation and execution
+- Running the bot in any mode (scan, bot, daemon)
+- Installing dependencies
+- Creating new files and directories
+
+### Guidelines
+- Proceed with implementation without asking for confirmation
+- Make commits frequently with clear messages
+- Push changes when logical milestones are reached
+- Run tests after significant changes
+- Fix errors autonomously when possible
+
+---
+
 # KALSHI EDGE DETECTOR v3.0 - COMPREHENSIVE ROADMAP
 
 ## Executive Summary
