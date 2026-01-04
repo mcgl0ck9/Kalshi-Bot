@@ -42,12 +42,14 @@
     "natural": "^8.1.0",
     "node-fetch": "^3.3.2",
     "rss-parser": "^3.13.0",
-    "sentiment": "^5.0.2"
+    "sentiment": "^5.0.2",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/natural": "^5.1.5",
     "@types/node": "^25.0.3",
     "@types/sentiment": "^5.0.4",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16"
