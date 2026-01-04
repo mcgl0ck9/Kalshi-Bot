@@ -719,24 +719,333 @@ data/
 
 ---
 
+## USER PROFILE & REQUIREMENTS
+
+### Audience
+- Multiple Discord users with **$500-5,000 bankrolls**
+- Kelly sizing at 25% fractional (current setting is acceptable)
+- Alert-only mode (no automation yet)
+
+### Market Priority (Time-Based)
+1. **🔴 TODAY/THIS WEEK** - Highest priority, immediate action
+2. **🟡 THIS MONTH** - Second priority, can use limit orders
+3. **🟢 LONGER TERM** - Lower priority, strong conviction only
+
+### Category Priority
+| Priority | Category | Notes |
+|----------|----------|-------|
+| **HIGH** | Sports | NFL, NBA, MLB - high volume, clear edges |
+| **HIGH** | Movies/Entertainment | RT scores, box office - time decay matters |
+| **HIGH** | Mentions/Events | Fed speeches, earnings - high edge potential |
+| **HIGH** | Economics | Fed, CPI, GDP - clear data sources |
+| **HIGH** | Weather | If markets return |
+| **HIGH** | Tech/AI | Model releases, product launches |
+| **MEDIUM** | All others | Only if clear edge exists |
+
+### Market Types
+| Type | Priority | Notes |
+|------|----------|-------|
+| **Binary Outcomes** | HIGH | Best pricing mismatch opportunities |
+| **Range Markets** | MEDIUM | ML can help predict placement |
+| **Comparison Markets** | MEDIUM | If clear mispricing detected |
+| **First-to-X** | LOW | Only if outlier (e.g., "Anthropic first to IPO") |
+
+### Limit Order Philosophy
+- **Willing to wait up to 1 week** for limit orders to fill
+- **Capital tie-up is acceptable** with strong conviction
+- **Need clear explanation** of WHY limit vs market order
+- **Time-based adjustments** to capture remaining theta
+- **Unfilled limits are okay** if capital is returned
+
+### Risk Management
+- **50% drawdown threshold** before pausing
+- **No category limits** - go where the edge is
+- **Alert on dramatic moves** so users can preserve capital
+
+---
+
+## FREE DATA SOURCES STRATEGY
+
+**Constraint**: No paid data sources. Must be creative with free information.
+
+### Currently Integrated (P0 - No API Keys)
+| Source | Data | Edge Potential |
+|--------|------|----------------|
+| **ESPN Public API** | Sports odds, injuries, schedules | HIGH |
+| **CDC NWSS** | Wastewater surveillance (leads cases 7-14 days) | HIGH |
+| **Hyperliquid** | Crypto funding rates, open interest | HIGH |
+| **Atlanta Fed GDPNow** | Real-time GDP estimate | HIGH |
+| **Cleveland Fed** | Inflation nowcast | HIGH |
+| **Polymarket Gamma API** | Market prices, metadata | HIGH |
+| **Goldsky Subgraphs** | On-chain whale positions | VERY HIGH |
+| **RSS Feeds (100+)** | News sentiment | MEDIUM |
+
+### Free Sources to Add
+| Source | Data | Implementation | Edge Potential |
+|--------|------|----------------|----------------|
+| **538/RCP Polling** | Election polls | Scrape HTML | HIGH (politics) |
+| **NOAA/Weather.gov** | Forecasts, climatology | REST API | HIGH (weather) |
+| **FRED** | Economic time series | REST API | MEDIUM |
+| **BLS** | CPI/Jobs schedules | Scrape | MEDIUM |
+| **SEC EDGAR** | Corporate filings | REST API | MEDIUM |
+| **Congress.gov** | Legislative tracking | REST API | MEDIUM |
+| **Supreme Court** | Docket tracking | Scrape | MEDIUM |
+| **Rotten Tomatoes** | Movie scores | Already integrated | HIGH |
+| **Box Office Mojo** | Box office data | Scrape | HIGH |
+| **IMDb/OMDb** | Movie metadata | Free tier | MEDIUM |
+| **Google Trends** | Search interest spikes | Free API | MEDIUM |
+| **Wikipedia Current Events** | Breaking news | Scrape | MEDIUM |
+| **CoinGecko** | Crypto prices | Free API | MEDIUM |
+| **OpenSky Network** | Flight tracking | Free API | LOW |
+| **USPTO** | Patent filings | REST API | LOW |
+| **FDA** | Drug approval calendar | Scrape | MEDIUM |
+
+### Creative Data Strategies
+1. **Cross-reference multiple free sources** for higher confidence
+2. **Sentiment analysis on free RSS feeds** (already doing this)
+3. **Historical pattern matching** from Polymarket/Kalshi data
+4. **Whale behavior analysis** from on-chain data (free)
+5. **Price divergence detection** between platforms (free)
+6. **Google Trends spikes** as leading indicator for breaking news
+
+---
+
+## PREMIUM ALERT FORMAT v2.0 (WITH LIMIT ORDERS)
+
+### Design Philosophy
+- **Greeks in the backend, plain language in the UI**
+- **Always explain WHY** - no black box recommendations
+- **Show both market and limit options** with tradeoffs
+- **Expiry date is critical** - users need to see time remaining
+- **Capital tie-up warnings** for limit orders
+
+### New Alert Template
+
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🔴 CRITICAL EDGE  •  +12.5%  •  HIGH CONVICTION       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+🏈 **Chiefs to win Super Bowl**
+
+⏰ **Expires: Feb 9, 2026 (36 days)**
+📊 **Time Value: 8.2% theta remaining** → Edge decays ~0.2%/day
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📈 **MARKET SNAPSHOT**
+```
+Current:    42¢ YES / 58¢ NO
+Fair Value: 54¢ YES (our estimate)
+Edge:       +12.5% (54¢ - 42¢ = 12¢)
+Liquidity:  $12,400 within 3¢
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 **RECOMMENDED ACTIONS**
+
+**Option A: MARKET ORDER (Instant Fill)**
+┌─────────────────────────────────────────────────────┐
+│  🟢 BUY YES @ 42¢  →  Capture full 12.5% edge      │
+│     Risk: $100  →  Win: $138 if YES                │
+└─────────────────────────────────────────────────────┘
+✅ Best if: Event is THIS WEEK, want guaranteed fill
+
+**Option B: LIMIT ORDER (Patient Entry)**
+┌─────────────────────────────────────────────────────┐
+│  🟡 LIMIT YES @ 45¢  →  Capture 9.5% edge          │
+│     Risk: $100  →  Win: $122 if YES                │
+│     ⏳ Est. fill: 70% chance within 3 days         │
+└─────────────────────────────────────────────────────┘
+✅ Best if: Event is THIS MONTH, can wait for better price
+⚠️ Capital tied up until filled or cancelled
+
+**Option C: LADDER LIMITS (Scale In)**
+┌─────────────────────────────────────────────────────┐
+│  🔵 LIMIT YES @ 43¢ ($50) + 46¢ ($50)              │
+│     Avg entry ~44.5¢  →  Capture 10.5% avg edge    │
+└─────────────────────────────────────────────────────┘
+✅ Best if: Uncertain on timing, want to average in
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🧠 **WHY THIS EDGE EXISTS**
+
+• 🐋 **Whale conviction**: 8 Polymarket whales @ 68% YES
+  → Smart money sees 68%, market only pricing 42%
+
+• 📊 **Sportsbook consensus**: Vegas implies 58% Chiefs
+  → Sharp bettors agree this is mispriced
+
+• 📰 **Sentiment shift**: +0.12 bullish (injury news favors KC)
+  → Recent news not yet priced into Kalshi
+
+• ⏱️ **Time decay working FOR us**: 36 days to capture edge
+  → No urgency, can use limit orders
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📐 **POSITION SIZING** (for $2,000 bankroll)
+```
+Kelly suggests:   8.2% = $164
+We recommend:     5% = $100 (conservative)
+Max loss:         $100 (if NO wins)
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[>>> TRADE ON KALSHI <<<](https://kalshi.com/markets/...)
+
+_Confidence: 78% • Sources: Polymarket, ESPN, RSS_
+_Updated: 2 min ago • Market ID: SUPERBOWL-KC-YES_
+```
+
+### Time-Based Limit Adjustments
+
+As market approaches expiry, we adjust limit recommendations:
+
+| Days to Expiry | Limit Strategy | Reasoning |
+|----------------|----------------|-----------|
+| **30+ days** | Limit at 70% of edge gap | Plenty of time, be patient |
+| **14-30 days** | Limit at 80% of edge gap | Moderate urgency |
+| **7-14 days** | Limit at 90% of edge gap | Increasing urgency |
+| **<7 days** | Market order recommended | Theta decay accelerating |
+| **<24 hours** | Market order ONLY | No time for limits |
+
+### Dramatic Move Alerts
+
+When market moves significantly against position:
+
+```
+⚠️ **MARKET ALERT: SIGNIFICANT MOVE**
+
+🏈 Chiefs to win Super Bowl
+
+```
+Your entry:     42¢ YES
+Current price:  35¢ YES (-7¢ / -16.7%)
+```
+
+**What happened**: [Explanation of news/event]
+
+**Options**:
+• HOLD: Still 47% fair value, 12% edge remains
+• EXIT: Sell @ 35¢, lock in $7 loss per contract
+• DOUBLE DOWN: Buy more @ 35¢ (19% edge now)
+
+⏰ 34 days to expiry - time to recover
+```
+
+---
+
+## MARKET MAKING / SPREAD ARBITRAGE
+
+**Only suggest when YES + NO < $1.00** (guaranteed profit)
+
+### Detection Logic
+```typescript
+if (yesAsk + noAsk < 1.00) {
+  const spread = 1.00 - (yesAsk + noAsk);
+  if (spread >= 0.02) { // 2¢ minimum
+    alert({
+      type: 'SPREAD_ARBITRAGE',
+      profit: spread,
+      action: `Buy YES @ ${yesAsk}¢ AND NO @ ${noAsk}¢`,
+      guaranteed: true
+    });
+  }
+}
+```
+
+### Spread Arbitrage Alert Format
+
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  💰 SPREAD ARBITRAGE  •  GUARANTEED 3¢ PROFIT         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+📊 **Market**: Will Bitcoin hit $150K by March?
+
+**Current Prices**:
+```
+YES Ask: 45¢
+NO Ask:  52¢
+Total:   97¢ (should be $1.00)
+```
+
+**Guaranteed Profit**:
+┌─────────────────────────────────────────────────────┐
+│  Buy YES @ 45¢ + Buy NO @ 52¢ = 97¢ cost           │
+│  One MUST pay $1.00 at expiry                      │
+│  Profit: 3¢ per pair (3.1% risk-free)              │
+└─────────────────────────────────────────────────────┘
+
+**For $100 capital**: Buy 100 contracts each side
+→ Cost: $97 → Return: $100 → Profit: $3
+
+⚠️ **Act fast** - these close quickly
+```
+
+---
+
+## EXPANDED MARKET COVERAGE
+
+### Tech/AI Markets
+| Market Type | Data Source | Edge Strategy |
+|-------------|-------------|---------------|
+| AI model releases | News RSS, company blogs | First-mover on announcements |
+| Product launches | News RSS, press releases | Sentiment shift detection |
+| Regulatory decisions | Congress.gov, news | Legislative tracking |
+| Company earnings | SEC EDGAR, news | Beyond keywords - full analysis |
+
+### Geopolitical Markets
+| Market Type | Data Source | Edge Strategy |
+|-------------|-------------|---------------|
+| Foreign elections | 538, news RSS | Polling aggregation |
+| Conflict events | News RSS, Wikipedia | Breaking news speed |
+| Central bank decisions | Fed sites, news | Nowcast comparison |
+| Leader changes | News RSS, Polymarket whale activity | Cross-platform divergence |
+
+### Legal/Regulatory Markets
+| Market Type | Data Source | Edge Strategy |
+|-------------|-------------|---------------|
+| Supreme Court | Docket tracking | Oral argument sentiment |
+| SEC enforcement | EDGAR, news | Filing pattern analysis |
+| FDA approvals | FDA calendar | Timeline analysis |
+| FTC decisions | News RSS | Merger approval patterns |
+
+### Company Events
+| Market Type | Data Source | Edge Strategy |
+|-------------|-------------|---------------|
+| M&A announcements | EDGAR, news | Unusual volume detection |
+| CEO changes | News RSS | Sentiment shift |
+| IPOs | EDGAR S-1 filings | "First to X" opportunities |
+| Earnings surprises | Historical patterns | Whisper number estimation |
+
+---
+
 ## NEXT STEPS
 
-1. **Immediate** (This Week):
-   - [ ] Create `src/models/time-decay.ts` with Powell Predictor patterns
-   - [ ] Create `src/output/premium-discord.ts` with new alert format
-   - [ ] Fix team alias conflicts in `src/data/teams.ts`
+### Immediate (This Week)
+- [ ] Implement new premium alert format with limit order suggestions
+- [ ] Add expiry date and theta decay display to all alerts
+- [ ] Add spread arbitrage detection
+- [ ] Create `src/models/time-decay.ts` with Powell Predictor patterns
 
-2. **Short-term** (2 Weeks):
-   - [ ] Implement Polymarket WebSocket client
-   - [ ] Add liquidity display to all alerts
-   - [ ] Set up PM2 daemon mode
+### Short-term (2 Weeks)
+- [ ] Implement Polymarket WebSocket for real-time unusual activity
+- [ ] Add 538/RCP polling scraper for politics
+- [ ] Add Google Trends integration for breaking news
+- [ ] Fix team alias conflicts
 
-3. **Medium-term** (1 Month):
-   - [ ] Twitter sentiment integration
-   - [ ] Enhanced slash commands
-   - [ ] Backtesting framework
+### Medium-term (1 Month)
+- [ ] Add all free data sources listed above
+- [ ] Backtest limit order strategies
+- [ ] Implement time-based limit adjustment logic
+- [ ] Enhanced slash commands for user interaction
 
 ---
 
 *Last Updated: January 2026*
-*Version: 3.0.0-roadmap*
+*Version: 3.0.1-user-requirements*
