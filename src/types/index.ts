@@ -236,6 +236,22 @@ export interface EdgeOpportunity {
       impliedProb: number;
       reasoning: string;
     };
+    // Time decay / theta (options-style pricing)
+    timeDecay?: {
+      daysToExpiry: number;
+      hoursToExpiry: number;
+      theta: number;              // 0-1, decay factor
+      thetaPerDay: number;        // Daily decay rate
+      urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
+      adjustedEdge: number;       // Edge after theta adjustment
+      recommendedOrderType: 'limit' | 'market';
+      limitOrderSuggestion?: {
+        price: number;
+        fillProbability: number;
+        estimatedFillTime: string;
+      };
+      reasoning: string;
+    };
   };
   sizing?: PositionSizing;
 }

@@ -53,3 +53,4 @@ export * from './city-weather-edge.js';
 export * from './measles-edge.js';
 export * from './earnings-edge.js';
 export * from './line-move-detector.js';
+export * from './time-decay-edge.js';

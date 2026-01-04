@@ -1025,27 +1025,68 @@ Total:   97¢ (should be $1.00)
 
 ---
 
+## IMPLEMENTATION STATUS
+
+### ✅ PHASE 1: TIME-DECAY PRICING MODEL (COMPLETE)
+
+**Completed January 2026**
+
+Files created:
+- `src/models/time-decay.ts` - Core theta decay calculations (inverse sigmoid)
+- `src/models/limit-order.ts` - Fill probability estimation, limit order suggestions
+- `src/models/index.ts` - Module exports
+- `src/edge/time-decay-edge.ts` - Integration with EdgeOpportunity pipeline
+- `tests/unit/models/time-decay.test.ts` - 41 unit tests
+- `tests/unit/models/limit-order.test.ts` - 42 unit tests
+
+Key features implemented:
+- Inverse sigmoid theta decay: `θ(t) = 1 / (1 + e^(-k(T-t)))`
+- Fill probability estimation based on random walk model
+- Optimal limit price calculation based on time remaining
+- Ladder order generation for scaling into positions
+- Urgency levels: critical (<24h), high (<3d), medium (<7d), low (>7d)
+- Order type recommendations: market vs limit based on theta
+- Capital tie-up warnings for limit orders
+
+Academic foundation:
+- arXiv:2412.14144 "Kelly Criterion for Prediction Markets"
+- Cont & Kukanov (arXiv:1210.1625): Optimal order placement
+- PNAS Iowa Electronic Markets: Diverging volatility near settlement
+
+### 🔄 PHASE 2: PREMIUM DISCORD UI/UX (IN PROGRESS)
+
+**Goal**: World-class Stripe/Robinhood-quality alerts with limit order suggestions
+
+Remaining tasks:
+- [ ] Integrate time-decay info into Discord alert formatting
+- [ ] Add expiry date and theta decay display to all alerts
+- [ ] Add limit order suggestions with fill probability
+- [ ] Add capital tie-up warnings
+
+### ⏳ PHASE 3-7 (PENDING)
+
+- Phase 3: Polymarket WebSocket Real-Time Monitoring
+- Phase 4: Free Data Sources Integration
+- Phase 5: Codebase Audit Fixes (team aliases, combos)
+- Phase 6: Spread Arbitrage Detection
+- Phase 7: Background Daemon Mode
+
+---
+
 ## NEXT STEPS
 
-### Immediate (This Week)
-- [ ] Implement new premium alert format with limit order suggestions
-- [ ] Add expiry date and theta decay display to all alerts
-- [ ] Add spread arbitrage detection
-- [ ] Create `src/models/time-decay.ts` with Powell Predictor patterns
+### Current Focus (Phase 2)
+- [ ] Integrate `formatTimeDecayInfo()` into Discord alert formatting
+- [ ] Add limit order options (market/limit/ladder) to alert display
+- [ ] Add theta decay visualization to alerts
+- [ ] Create premium alert template with all new information
 
-### Short-term (2 Weeks)
+### Upcoming (Phase 3)
 - [ ] Implement Polymarket WebSocket for real-time unusual activity
-- [ ] Add 538/RCP polling scraper for politics
-- [ ] Add Google Trends integration for breaking news
-- [ ] Fix team alias conflicts
-
-### Medium-term (1 Month)
-- [ ] Add all free data sources listed above
-- [ ] Backtest limit order strategies
-- [ ] Implement time-based limit adjustment logic
-- [ ] Enhanced slash commands for user interaction
+- [ ] Add whale entry detection
+- [ ] Add flash move detection
 
 ---
 
 *Last Updated: January 2026*
-*Version: 3.0.1-user-requirements*
+*Version: 3.0.2-phase1-complete*
