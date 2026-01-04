@@ -2,480 +2,718 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+# KALSHI EDGE DETECTOR v3.0 - COMPREHENSIVE ROADMAP
+
+## Executive Summary
+
+**Vision**: Build a world-class, PhD-level prediction market edge detection system that treats markets like true options with time decay, provides stunning Stripe/Robinhood-quality Discord alerts, and captures unusual cross-platform activity in real-time.
+
+**Key Upgrades**:
+1. Options-like pricing with theta decay as markets approach expiry
+2. Real-time WebSocket monitoring for Polymarket unusual activity
+3. World-class Discord UI/UX overhaul with liquidity information
+4. Twitter/X sentiment integration
+5. Background daemon mode for 24/7 operation
+6. Unified team alias system (resolved 44 cross-league conflicts)
+7. Powell Predictor-style streak amplifiers and recency weighting
+
+---
+
 ## Project Overview
 
-Kalshi Edge Detector v2 - A TypeScript system for detecting edges in Kalshi prediction markets using multiple converging signals.
+Kalshi Edge Detector v3 - A TypeScript system for detecting edges in Kalshi prediction markets using multiple converging signals, PhD-level ML techniques, and options-style probability modeling.
 
-### Core Signals
+### Core Signals (Validated)
 1. **Cross-Platform Price Divergence** - Kalshi vs Polymarket price gaps
 2. **Sentiment-Price Divergence** - News sentiment vs market price
-3. **Whale Activity** - Signals from top Polymarket traders
-4. **Polymarket Whale Conviction** - On-chain position analysis from top traders
+3. **Whale Activity** - On-chain Polymarket position analysis
+4. **Time-Decay Adjusted Fair Value** - Options theta modeling (NEW)
+5. **Streak-Amplified Probabilities** - Powell Predictor methodology (NEW)
 
-### Meta Edge Signals (Advanced)
-5. **Options-Implied Probabilities** - Fed Funds Futures, SPX options, Treasury curve
-6. **New Market Scanner** - Early mover advantage on fresh markets
-7. **Calibration Tracking** - Historical accuracy and bias adjustment
+### Advanced Signals
+6. **Options-Implied Probabilities** - Fed Funds Futures, SPX options, Treasury curve
+7. **New Market Scanner** - Early mover advantage on fresh markets
+8. **Calibration Tracking** - Historical accuracy and bias adjustment
+9. **Twitter/X Sentiment** - Real-time social sentiment (NEW)
+10. **Orderbook Imbalance** - Polymarket WebSocket flow analysis (NEW)
 
 ### Adversarially Validated Signals (edge/*)
-Signals that pass the "who's on the other side?" test:
+11. **Fed Regime Bias** - FedWatch regime-dependent biases
+12. **Injury Overreaction** - Public overreacts to star player injuries
+13. **Sports Odds Consensus** - Kalshi vs sportsbook consensus
+14. **Weather Overreaction** - Climatological base rates + forecast skill
+15. **Recency Bias** - Optimal Bayesian update detection
+16. **Whale Performance** - Category-specific whale win rates
 
-8. **Fed Regime Bias** (`fed-regime-bias.ts`) - Cleveland Fed research shows FedWatch has regime-dependent biases
-9. **Injury Overreaction** (`injury-overreaction.ts`) - Public overreacts to star player injuries
-10. **Sports Odds Consensus** (`sports-odds.ts`) - Compare Kalshi sports markets to sportsbook consensus
-11. **Weather Overreaction** (`weather-overreaction.ts`) - Apply climatological base rates + forecast skill limits
-12. **Recency Bias** (`recency-bias.ts`) - Detect markets that moved more than optimal Bayesian update
-13. **Whale Performance** (`whale-performance.ts`) - Track whale win rates by category for confidence weighting
+---
 
-### P0 Data Sources (No API Keys Required)
-Sustainable data feeds that work without manual key renewal:
+## V3.0 ROADMAP - IMPLEMENTATION PHASES
 
-14. **ESPN Sports Odds** (`espn-odds.ts`) - NFL/NBA/NHL/MLB/NCAAF/NCAAB odds from ESPN public API
-15. **CDC Health Surveillance** (`cdc-surveillance.ts`) - Wastewater + flu data (leads cases by 7-14 days)
-16. **Crypto Funding Rates** (`crypto-funding.ts`) - Hyperliquid DeFi perps funding + open interest
-17. **Fed Nowcasts** (`fed-nowcasts.ts`) - Atlanta Fed GDPNow + Cleveland Fed inflation estimates
+### PHASE 1: OPTIONS-LIKE PRICING MODEL (P0 - Critical)
 
-## Commands
+**Goal**: Treat prediction markets like binary options with proper time decay.
 
-```bash
-npm run dev          # Watch mode for development
-npm run scan         # Run scan immediately (--test for webhook test)
-npm run bot          # Start Discord bot with slash commands
-npm run build        # Compile TypeScript
-npm start            # Run in scheduled mode (6:30am, 12pm, 5pm ET)
+**Academic Foundation**:
+- Theta decay accelerates near expiry (non-linear, not constant)
+- At-the-money options have highest theta (most time value at risk)
+- Binary options: fair value = P(event) adjusted for time remaining
+
+**Implementation** (`src/models/time-decay.ts`):
+
+```typescript
+interface TimeDecayModel {
+  // Powell Predictor style half-life decay
+  halfLifeDays: number;           // 270d for prepared remarks, 180d for live Q&A
+
+  // Options-style theta acceleration
+  thetaAcceleration: {
+    daysToExpiry: number;
+    decayMultiplier: number;      // 1.0 at 30d, 1.5 at 7d, 2.5 at 1d
+  }[];
+
+  // Streak amplifiers (from Powell Predictor)
+  streakAmplifier: {
+    alpha: 0.25;                  // Decay rate
+    floorMult: 1.0;               // Minimum multiplier
+    capMult: 1.6;                 // Maximum multiplier
+    probCap: 0.98;                // Prevent overconfidence
+  };
+}
+
+// Rotten Tomatoes-style expiry adjustment
+function adjustForExpiry(baseProb: number, daysToExpiry: number): number {
+  // Non-linear decay: faster as expiry approaches
+  const decayFactor = Math.pow(0.5, (30 - daysToExpiry) / 30);
+  return baseProb * (1 - decayFactor * 0.15); // 15% max adjustment
+}
 ```
 
-## Architecture
+**Key Patterns from Powell Predictor**:
+- Recency weighting: `weight = 0.5^(age_days / half_life_days)` with 0.05 floor
+- Streak multiplier: `FLOOR + (CAP - FLOOR) * (1 - exp(-ALPHA * streak))`
+- Soft adjustments for sensitive events: 1.15x for shutdown-related phrases
+- Macro regime conditioning: 3-quantile bins for CPI, EFFR, yield curve
+
+**Files to Create**:
+- `src/models/time-decay.ts` - Core theta decay calculations
+- `src/models/streak-amplifier.ts` - Powell-style streak boosts
+- `src/models/regime-conditioning.ts` - Macro bin filtering
+
+---
+
+### PHASE 2: WORLD-CLASS DISCORD UI/UX (P0 - Critical)
+
+**Goal**: Stripe/Robinhood-quality alerts that make users gasp.
+
+**Design Principles** (from research):
+1. **Color as Communication** - Green = profitable, Red = risky (Robinhood)
+2. **Card-Based Modularity** - Each signal is a self-contained card
+3. **Clear Hierarchy** - Most important info first (price, action, edge)
+4. **Functional Animation** - Status emojis guide attention flow
+5. **Trust Through Clarity** - Show confidence calculations, not just scores
+
+**New Alert Format** (`output/premium-discord.ts`):
+
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  🔴 CRITICAL EDGE • 12.5% • HIGH CONVICTION   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+📈 **Chiefs to win Super Bowl**
+
+┌─────────────────────────────────────────────┐
+│  🟢 BUY YES @ 42¢  →  Win 58¢ per contract  │
+└─────────────────────────────────────────────┘
+
+**Market Data**
+```
+Price:      42¢ YES / 58¢ NO
+Fair Value: 54¢ (theta-adjusted)
+Edge:       +12.5%
+Expires:    Feb 9, 2026 (36 days)
+```
+
+**Liquidity Profile**
+```
+Bid/Ask:    41¢ / 43¢ (2¢ spread)
+Depth:      $12,400 within 3¢
+24h Volume: $89,000
+Slippage:   ~0.5% for $500 order
+```
+
+**Why This Edge Exists**
+• 🐋 Whale conviction: 8 traders @ 68% YES (vs 42% market)
+• 📊 Sportsbook consensus: 58% implied (vs 42% market)
+• 📰 Sentiment: +0.12 bullish (injury reports favor KC)
+• ⏱️ Time decay: 2.1% theta remaining
+
+**Position Sizing**
+```
+Kelly:      8.2% of bankroll
+Suggested:  $500 (fractional Kelly 25%)
+Max Loss:   $500
+```
+
+[>>> TRADE ON KALSHI <<<](https://kalshi.com/markets/...)
+
+_Confidence: 78% • Sources: Polymarket, ESPN, RSS • Updated: 2m ago_
+```
+
+**Missing Information to Add**:
+- ✅ Liquidity (bid/ask spread, depth, slippage estimate)
+- ✅ Time to expiry with theta decay impact
+- ✅ Data freshness timestamp
+- ✅ Clear max loss display
+- ✅ Confidence calculation breakdown
+
+**Files to Create/Modify**:
+- `src/output/premium-discord.ts` - New premium formatting
+- `src/output/liquidity-display.ts` - Liquidity profile generation
+- `src/types/premium-alert.ts` - Enhanced alert types
+
+---
+
+### PHASE 3: REAL-TIME POLYMARKET WEBSOCKET (P1 - High Priority)
+
+**Goal**: Catch unusual activity like the Maduro Venezuela spike in real-time.
+
+**Research Sources**:
+- [polymarket-websocket-client](https://github.com/discountry/polymarket-websocket-client)
+- [polymarket-orderbook-watcher](https://github.com/discountry/polymarket-orderbook-watcher)
+
+**Architecture**:
+
+```typescript
+// src/realtime/polymarket-stream.ts
+import { ClobMarketClient } from './polymarket-websocket';
+
+interface UnusualActivityAlert {
+  market: string;
+  type: 'whale_entry' | 'flash_move' | 'volume_spike' | 'spread_collapse';
+  magnitude: number;        // How unusual (stddev from baseline)
+  priceMove: number;        // Price change in last N minutes
+  volumeVelocity: number;   // Volume per minute vs average
+  timestamp: Date;
+}
+
+const client = new ClobMarketClient({
+  autoReconnect: true,
+  heartbeatInterval: 30000,
+});
+
+// Subscribe to high-value markets
+client.onBook(event => detectOrderbookImbalance(event));
+client.onPriceChange(event => detectFlashMove(event));
+client.onLastTradePrice(event => detectWhaleEntry(event));
+```
+
+**Unusual Activity Detection**:
+
+1. **Whale Entry Detection**:
+   - Track position size changes > $10,000 in 5 minutes
+   - Alert when normally quiet whale suddenly active
+   - Cross-reference with Kalshi price for arbitrage
+
+2. **Flash Move Detection**:
+   - Price moves > 10% in < 5 minutes
+   - Volume velocity > 3x normal
+   - Immediately check Kalshi for mispricing
+
+3. **Orderbook Imbalance**:
+   - Bid depth vs ask depth ratio > 3:1
+   - Iceberg order detection (unusual wick-to-body ratios)
+   - Spread collapse = incoming whale
+
+**Files to Create**:
+- `src/realtime/polymarket-stream.ts` - WebSocket client
+- `src/realtime/unusual-activity.ts` - Anomaly detection
+- `src/realtime/velocity-tracker.ts` - Rate-of-change monitoring
+
+---
+
+### PHASE 4: TWITTER/X SENTIMENT INTEGRATION (P1 - High Priority)
+
+**Goal**: Real-time social sentiment as leading indicator.
+
+**Research Foundation**:
+- FinBERT/RoBERTa for financial text understanding
+- Compound sentiment score thresholds: buy > 0.05, sell < -0.05
+- Social media sentiment is noisy but valuable signal
+
+**Implementation** (`src/fetchers/twitter-sentiment.ts`):
+
+```typescript
+interface TwitterSentimentConfig {
+  // API Access (required)
+  apiKey: string;
+  apiSecret: string;
+  bearerToken: string;
+
+  // Sentiment thresholds
+  bullishThreshold: 0.05;
+  bearishThreshold: -0.05;
+
+  // Tracked accounts (crypto twitter, finance influencers)
+  trackedAccounts: string[];
+
+  // Keywords by category
+  keywords: {
+    crypto: ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto'];
+    politics: ['trump', 'biden', 'election', 'congress'];
+    sports: ['nfl', 'nba', 'super bowl', 'playoffs'];
+  };
+}
+
+// VADER sentiment with financial lexicon
+function analyzeTweet(text: string): {
+  compound: number;
+  bullish: boolean;
+  bearish: boolean;
+  entities: string[];
+}
+```
+
+**Data Sources**:
+- Twitter/X API (Basic plan required)
+- Crypto Twitter monitoring
+- News account tracking (breaking news advantage)
+
+**Files to Create**:
+- `src/fetchers/twitter-sentiment.ts` - Twitter API integration
+- `src/analysis/social-sentiment.ts` - Sentiment aggregation
+- `src/edge/twitter-divergence.ts` - Sentiment vs price edge
+
+---
+
+### PHASE 5: CODEBASE AUDIT & DATA CONSISTENCY (P1)
+
+**Findings from Audit**:
+
+#### Team Aliases - 44 Cross-League Conflicts Identified
+
+**Problem**: Abbreviations like PHI, DET, MIN appear in 4 leagues each.
+
+**Current State** (`src/data/teams.ts` - 1,921 lines):
+- 213 teams across 6 leagues (NFL, NBA, MLB, NHL, NCAAF, NCAAB)
+- Well-centralized in single file ✅
+- But `buildAllAliasMap()` uses "first league wins" strategy ⚠️
+
+**Fix** (`src/data/teams.ts`):
+
+```typescript
+// Add league context to disambiguation
+export function getTeamByAliasWithLeague(
+  alias: string,
+  preferredLeague?: string
+): { teamKey: string; league: string } | null {
+  const matches = getAllTeamsByAlias(alias);
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+
+  // Prefer specified league if available
+  if (preferredLeague) {
+    const preferred = matches.find(m => m.league === preferredLeague);
+    if (preferred) return preferred;
+  }
+
+  // Fall back to sport context from market title
+  return matches[0];
+}
+```
+
+**NCAAF Abbreviation Conflicts to Fix**:
+- Utah Utes: Change 'UT' → 'UTAH' (conflicts with Texas)
+- Maryland: Prefer 'UMD' over 'UM' (conflicts with Michigan)
+- Michigan: Prefer 'MICH' over 'UM'
+
+#### Discord Deep Linking - Currently Basic
+
+**Current**: `[Trade on Kalshi](url)` with no parameters
+
+**Enhancement**:
+```typescript
+// Add quick-action parameters
+const tradeUrl = `${market.url}?action=buy&side=yes&amount=${suggestedSize}`;
+```
+
+#### Sports Combos - Currently Hidden
+
+**Problem**: Parlay markets filtered out as "false positives"
+
+```typescript
+// REMOVE this aggressive filter in cross-platform.ts:374
+if (minPrice < 0.03 && maxPrice > 0.20) {
+  return false; // This removes legitimate extreme edges!
+}
+
+// REPLACE with confidence-weighted approach
+if (minPrice < 0.03 && maxPrice > 0.20) {
+  confidence *= 0.5; // Reduce confidence, don't filter
+}
+```
+
+---
+
+### PHASE 6: BACKGROUND DAEMON MODE (P2)
+
+**Goal**: Run bot 24/7 even when terminal is closed.
+
+**Implementation Options**:
+
+1. **PM2 Process Manager** (Recommended):
+```bash
+# Install
+npm install -g pm2
+
+# Start daemon
+pm2 start dist/index.js --name kalshi-bot
+
+# Auto-restart on crash
+pm2 startup
+pm2 save
+```
+
+2. **systemd Service** (Linux):
+```ini
+# /etc/systemd/system/kalshi-bot.service
+[Unit]
+Description=Kalshi Edge Detector Bot
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/home/deploy/kalshi-bot
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. **Docker Container**:
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY dist ./dist
+CMD ["node", "dist/index.js"]
+```
+
+**Files to Create**:
+- `ecosystem.config.js` - PM2 configuration
+- `Dockerfile` - Container definition
+- `scripts/start-daemon.sh` - Startup script
+
+---
+
+### PHASE 7: ENHANCED SLASH COMMANDS (P2)
+
+**Goal**: Make bot accessible to anyone, not just developers.
+
+**New Commands**:
+
+```typescript
+// /scan - Already exists, enhance with filters
+/scan [category] [--urgency critical|standard|all]
+
+// /portfolio - Track positions
+/portfolio show
+/portfolio add <market> <side> <amount>
+/portfolio pnl
+
+// /alerts - Manage notifications
+/alerts subscribe <channel>
+/alerts mute <category> <duration>
+/alerts threshold <edge_percent>
+
+// /research - Deep dive on market
+/research <market_ticker>
+// Returns: full analysis with all signals, historical accuracy, whale positions
+
+// /backtest - Historical validation
+/backtest <strategy> <start_date> <end_date>
+
+// /whale - Whale activity
+/whale leaderboard [category]
+/whale track <wallet>
+/whale positions <market>
+```
+
+---
+
+## COMMANDS
+
+```bash
+# Development
+npm run dev          # Watch mode for development
+npm run build        # Compile TypeScript
+npm run test         # Run test suite
+
+# Execution
+npm run scan         # Run scan immediately (--test for webhook test)
+npm run bot          # Start Discord bot with slash commands
+npm start            # Run in scheduled mode (6:30am, 12pm, 5pm ET)
+
+# Daemon (NEW)
+npm run daemon:start # Start with PM2
+npm run daemon:stop  # Stop daemon
+npm run daemon:logs  # View logs
+npm run daemon:status # Check status
+
+# Backtesting (NEW)
+npm run backtest     # Run backtesting framework
+npm run backtest:report # Generate performance report
+```
+
+---
+
+## ARCHITECTURE
 
 ```
 src/
-├── index.ts           # CLI entry point, parses args and runs modes
-├── pipeline.ts        # Main 8-step edge detection pipeline
-├── config.ts          # Environment config + tracked topics/whales
-├── types/             # TypeScript interfaces
-│   ├── index.ts       # Core types (Market, Edge, etc.)
-│   ├── economic.ts    # Economic indicator types
-│   ├── edge.ts        # Signal aggregation types
-│   └── meta-edge.ts   # Meta edge types (channels, calibration, etc.)
-├── exchanges/         # dr-manhattan wrapper for Kalshi + Polymarket
-├── fetchers/          # Data fetchers
-│   ├── news.ts        # RSS feed aggregation (100+ sources)
-│   ├── whales.ts      # Whale activity tracking
-│   ├── entertainment.ts # Box office, Rotten Tomatoes
-│   ├── options-implied.ts # Fed Funds, SPX, Treasury yields
-│   ├── sports-odds.ts # The Odds API integration
-│   ├── espn-odds.ts   # ESPN public API (no key required)
-│   ├── polymarket-onchain.ts # On-chain whale conviction analysis
-│   ├── cdc-surveillance.ts # CDC wastewater + flu surveillance
-│   ├── crypto-funding.ts # Hyperliquid funding rates + Fear/Greed
-│   ├── fed-nowcasts.ts # GDPNow + inflation nowcasts
-│   └── economic/      # Fed, CPI, Jobs, GDP nowcasts
-├── edge/              # Edge detection modules
-│   ├── macro-edge.ts  # Economic indicator edges
-│   ├── new-market-scanner.ts # Fresh market detection
-│   ├── calibration-tracker.ts # Prediction tracking
-│   ├── fed-regime-bias.ts # FedWatch regime adjustment
-│   ├── injury-overreaction.ts # Sports injury overreaction
-│   ├── weather-overreaction.ts # Weather forecast bias
-│   ├── recency-bias.ts # Base rate neglect detection
-│   ├── cross-platform-conviction.ts # Whale conviction edges
-│   └── whale-performance.ts # Whale historical win rate tracking
-├── analysis/          # Sentiment, cross-platform matching, Kelly sizing
-│   ├── cross-platform.ts # Market matching with entity extraction
-│   ├── sentiment.ts   # News sentiment with sports lexicon
-│   └── position-sizing.ts # Kelly criterion sizing
-└── output/            # Discord output
-    ├── discord.ts     # Webhooks + bot with enhanced formatting
-    └── channels.ts    # Multi-channel routing
+├── index.ts                    # CLI entry point
+├── pipeline.ts                 # Main edge detection pipeline
+├── config.ts                   # Environment config
+│
+├── models/                     # NEW: Pricing models
+│   ├── time-decay.ts          # Options-style theta decay
+│   ├── streak-amplifier.ts    # Powell Predictor methodology
+│   └── regime-conditioning.ts # Macro bin filtering
+│
+├── realtime/                   # NEW: Real-time monitoring
+│   ├── polymarket-stream.ts   # WebSocket client
+│   ├── unusual-activity.ts    # Anomaly detection
+│   └── velocity-tracker.ts    # Rate-of-change monitoring
+│
+├── types/
+│   ├── index.ts               # Core types
+│   ├── premium-alert.ts       # NEW: Enhanced alert types
+│   └── ...
+│
+├── exchanges/                  # dr-manhattan wrapper
+│
+├── fetchers/
+│   ├── news.ts                # RSS aggregation
+│   ├── twitter-sentiment.ts   # NEW: Twitter/X integration
+│   ├── polymarket-onchain.ts  # On-chain whale analysis
+│   ├── espn-odds.ts           # ESPN public API
+│   ├── cdc-surveillance.ts    # CDC health data
+│   ├── crypto-funding.ts      # Hyperliquid funding
+│   └── fed-nowcasts.ts        # GDPNow, inflation
+│
+├── edge/
+│   ├── time-decay-edge.ts     # NEW: Theta-adjusted edges
+│   ├── twitter-divergence.ts  # NEW: Social sentiment edge
+│   ├── cross-platform-conviction.ts
+│   └── ...
+│
+├── analysis/
+│   ├── cross-platform.ts      # Market matching
+│   ├── sentiment.ts           # News sentiment
+│   └── position-sizing.ts     # Kelly criterion
+│
+├── data/
+│   └── teams.ts               # Unified team database (213 teams)
+│
+└── output/
+    ├── premium-discord.ts     # NEW: World-class formatting
+    ├── liquidity-display.ts   # NEW: Liquidity profiles
+    ├── discord.ts             # Webhooks + bot
+    └── channels.ts            # Multi-channel routing
 ```
 
-## Key Dependencies
+---
 
-- **@alango/dr-manhattan** - Unified API for prediction market exchanges (Kalshi REST + RSA auth, Polymarket REST + WebSocket)
-- **sentiment** - Text sentiment analysis with custom market lexicon
-- **rss-parser** - Fetches 100+ news RSS feeds
-- **discord.js** - Discord bot + slash commands
+## KEY DEPENDENCIES
 
-## Pipeline Flow (pipeline.ts)
+**Core**:
+- `@alango/dr-manhattan` - Unified prediction market API
+- `discord.js` - Bot + slash commands
+- `sentiment` - Text sentiment analysis
+- `rss-parser` - News aggregation
 
-1. Fetch markets from Kalshi + Polymarket via dr-manhattan
-2. Fetch news from RSS feeds (100+ sources)
-3. Check whale activity
-4. Match markets cross-platform using title similarity + entity extraction
-5. Analyze sentiment by topic (39 tracked topics)
-6. Find sentiment-based edges
-6.5. **Validated macro signals**:
-   - Fed Regime Bias adjustment
-   - Injury overreaction detection
-   - Sports odds vs Kalshi comparison (if ODDS_API_KEY set)
-   - Weather forecast overreaction
-   - Recency bias / base rate neglect
-   - Polymarket whale conviction analysis
-7. Combine signals into opportunities with Kelly sizing
-8. Send alerts to Discord with enhanced formatting
+**New for v3.0**:
+- `ws` - WebSocket client for Polymarket
+- `twitter-api-v2` - Twitter/X API
+- `pm2` - Process management
+- `@tensorflow/tfjs-node` - ML edge prediction (optional)
 
 ---
 
-## Cross-Platform Matching System
+## ENVIRONMENT CONFIG (.env)
 
-### Entity Aliases (`analysis/cross-platform.ts`)
+```bash
+# Required
+DISCORD_WEBHOOK_URL=
+DISCORD_BOT_TOKEN=
 
-The matching system uses comprehensive entity aliases for accurate market comparison:
+# Kalshi (for authenticated features)
+KALSHI_API_KEY_ID=
+KALSHI_API_PRIVATE_KEY=
 
-#### Sports Teams (200+ teams)
-- **NFL**: All 32 teams with full names, cities, and nicknames
-- **NBA**: All 30 teams with abbreviations and aliases
-- **MLB**: All 30 teams with city and nickname variations
-- **NHL**: All 32 teams (Bruins, Sabres, Red Wings, Panthers, Canadiens, etc.)
-- **NCAAF**: ~70 major programs (SEC, Big Ten, ACC, Big 12, notable independents)
-- **NCAAB**: ~50 basketball powerhouses (Duke, Kentucky, Kansas, Gonzaga, etc.)
+# Twitter/X (NEW - for sentiment)
+TWITTER_API_KEY=
+TWITTER_API_SECRET=
+TWITTER_BEARER_TOKEN=
 
-#### Politicians & Government
-- Trump, Biden, Harris, Pence, DeSantis, Newsom, Obama, etc.
-- Party aliases (GOP, Democrats, Republicans)
+# Optional API Keys
+NEWS_API_KEY=
+ODDS_API_KEY=
+TMDB_API_KEY=
 
-#### Business Leaders
-- Elon Musk, Jeff Bezos, Tim Cook, Satya Nadella, Mark Zuckerberg, etc.
+# Position Sizing
+BANKROLL=10000
+MIN_EDGE_THRESHOLD=0.02
 
-#### World Leaders
-- Putin, Xi Jinping, Zelensky, Netanyahu, Macron, Modi, etc.
-
-#### Organizations & Companies
-- Federal Reserve, SEC, DOJ, NATO, UN, WHO
-- OpenAI, Anthropic, Google, Microsoft, Apple, Meta, Tesla, etc.
-
-#### Entertainment
-- Taylor Swift, Beyonce, Drake, Travis Kelce, major franchises
-
-### Matching Algorithm
-
-1. **Entity Extraction**: Find common entities between titles using substring matching
-2. **Sports Matchup Detection**: 2+ teams from same league = 85% confidence boost
-3. **Multi-Entity Boost**: 3+ common entities = 70%+ confidence
-4. **Jaccard Similarity**: Word overlap with caps to prevent false positives
-5. **Year/Number Matching**: Boost when specific dates/numbers align
-
-### False Positive Prevention
-- Removed problematic 2-letter aliases (ne, no, tb)
-- Removed 3-letter city codes that match common words
-- Capped Jaccard-only matches at 30%
-
----
-
-## Sentiment Analysis System
-
-### Custom Lexicon (`analysis/sentiment.ts`)
-
-#### Market Terms
-- **Bullish**: surges, soars, rallies, breakout, moon, skyrockets, victory
-- **Bearish**: crashes, plunges, tanks, dumps, selloff, rekt, collapses
-
-#### Sports-Specific (60+ words)
-- **Positive**: dominant, clinch, sweep, undefeated, unstoppable, comeback, clutch, heroic
-- **Negative**: upset, stunned, collapse, choke, eliminated, demolished, slump, struggling
-
-#### Injury Detection
-- injured, sidelined, questionable, doubtful, ruled_out, torn, concussion, surgery
-- Phrase replacements: "ruled out" → devastating, "torn acl" → season-ending
-
-#### Sports Phrases (25+)
-- "winning streak" → dominant winning unstoppable
-- "losing streak" → struggling slumping defeated
-- "blown lead" → collapse choke devastating
-- "upset loss" → upset stunned defeated
-
-### Sentiment Thresholds
-- Bullish: comparative >= 0.05
-- Bearish: comparative <= -0.05
-- Neutral: -0.05 < comparative < 0.05
-
----
-
-## Discord Alert Formatting
-
-### Edge Alert Format (`output/discord.ts`)
-
-```
-🔴 **CRITICAL EDGE DETECTED**
-
-**Market Title Here**
-
-```
-🟢 ACTION: BUY YES @ 65¢
+# Discord Channels (category-specific)
+DISCORD_WEBHOOK_SPORTS=
+DISCORD_WEBHOOK_CRYPTO=
+DISCORD_WEBHOOK_ECONOMICS=
+DISCORD_WEBHOOK_POLITICS=
+DISCORD_WEBHOOK_ENTERTAINMENT=
+DISCORD_WEBHOOK_HEALTH=
+DISCORD_WEBHOOK_WHALE=
+DISCORD_WEBHOOK_URGENT=      # NEW: Critical alerts only
 ```
 
-📍 **Current Price:** 65¢
-📊 **Fair Value:** 75¢
-📈 **Edge:** +10.0%
-🎯 **Confidence:** 75%
+---
 
-**Why this edge exists:**
-• Cross-platform divergence: Kalshi 65¢ vs Poly 75¢ (Kalshi is cheaper)
-• Sportsbook consensus: 74% (sharper money says this is mispriced)
-• Game: Chiefs @ Eagles
+## ACADEMIC RESEARCH INTEGRATION
 
-**Position Sizing:**
-• Suggested size: **$500**
-• Kelly fraction: 8.5%
+### Machine Learning Edge Detection
 
-Platform: **KALSHI**
-[>>> TRADE NOW <<<](url)
+**Sources**:
+- [MDPI 2024](https://www.mdpi.com/2673-9909/5/3/76): LSTM, TCN, N-BEATS for market prediction
+- [arXiv 2408.12408](https://arxiv.org/html/2408.12408v1): Deep learning trend prediction evaluation
+- [ScienceDirect 2025](https://www.sciencedirect.com/science/article/pii/S2590005625000177): Algorithmic trading optimization
+
+**Techniques to Implement**:
+- Temporal Fusion Transformers (TFT) for multi-horizon prediction
+- N-BEATS for interpretable forecasting
+- LSTM with attention for sequence modeling
+
+### Prediction Market Arbitrage
+
+**Sources**:
+- [GitHub: Polymarket-Kalshi-Arbitrage-bot](https://github.com/terauss/Polymarket-Kalshi-Arbitrage-bot)
+- [Substack: Building a Prediction Market Arbitrage Bot](https://navnoorbawa.substack.com/p/building-a-prediction-market-arbitrage)
+
+**Key Insight**: $40 million extracted via arbitrage April 2024 - April 2025
+
+### Market Microstructure
+
+**Sources**:
+- [arXiv 2004.08290](https://arxiv.org/pdf/2004.08290): Order flow imbalance impact
+- [Cornell](https://stoye.economics.cornell.edu/docs/Easley_ssrn-4814346.pdf): Crypto market microstructure
+
+**Techniques**:
+- Order Book Imbalance (OBI) for short-term prediction
+- VPIN (Volume-synchronized PIN) for toxicity
+- Micro-price estimation for fair value
+
+### UI/UX Design
+
+**Sources**:
+- [Robinhood Design](https://design.google/library/robinhood-investing-material): Material Design principles
+- [Stripe Dashboard](https://www.phoenixstrategy.group/blog/how-to-design-real-time-financial-dashboards): Real-time financial dashboards
+
+**Principles**:
+- Clarity, Trust, Speed, Adaptability
+- Color as communication (green/red for profit/loss)
+- Card-based modular layout
+- Data visualization over raw numbers
+
+---
+
+## IMPLEMENTATION PRIORITY
+
+| Phase | Feature | Priority | Complexity | Impact |
+|-------|---------|----------|------------|--------|
+| 1 | Time-decay pricing model | P0 | Medium | High |
+| 2 | Premium Discord UI/UX | P0 | Medium | Very High |
+| 3 | Polymarket WebSocket | P1 | High | Very High |
+| 4 | Twitter sentiment | P1 | Medium | High |
+| 5 | Codebase audit fixes | P1 | Low | Medium |
+| 6 | Daemon mode | P2 | Low | Medium |
+| 7 | Enhanced slash commands | P2 | Medium | Medium |
+
+---
+
+## SUCCESS METRICS
+
+**Edge Detection**:
+- Capture 90%+ of >5% cross-platform divergences
+- Detect unusual Polymarket activity within 60 seconds
+- Maintain 65%+ win rate on critical alerts
+
+**User Experience**:
+- Alert clarity score: 9/10 (user survey)
+- Time to decision: <30 seconds per alert
+- Deep link click-through rate: >40%
+
+**Operations**:
+- 99.9% uptime with daemon mode
+- <5 minute latency for Twitter sentiment
+- Process 1000+ markets per scan cycle
+
+---
+
+## DATA STORAGE
+
+```
+data/
+├── predictions.json          # All prediction records
+├── calibration.json          # Calibration report
+├── whale_predictions.json    # Whale history
+├── whale_performance.json    # Win rates by category
+├── discovered-whales.json    # Auto-discovered wallets
+├── streak-history.json       # NEW: Streak tracking
+├── twitter-sentiment.json    # NEW: Social sentiment cache
+└── backtest-results/         # NEW: Historical validation
+    ├── strategy-a.json
+    └── strategy-b.json
 ```
 
-### Summary Report Format
+---
 
-- Timestamp with ET timezone
-- Scan summary (markets, articles, edges found)
-- Actionable opportunities with 🟢/🔴 indicators
-- Cross-platform divergences showing which platform to buy
-- Whale activity with sentiment indicators
+## CURRENT CHANNEL STATUS (Jan 2026)
+
+| Channel | Status | Priority Fixes |
+|---------|--------|----------------|
+| Sports | ✅ Working | Add liquidity display, fix combo clarity |
+| Crypto | ✅ Working | Add WebSocket real-time monitoring |
+| Economics | ✅ Working | Integrate Powell Predictor model |
+| Politics | ⚠️ Limited | Add 538/RCP polling, Twitter sentiment |
+| Entertainment | ⚠️ Limited | Add time-decay for RT score markets |
+| Health | ✅ Working | Add CDC wastewater alerts |
+| Whale | ✅ Strong | Add velocity detection, unusual activity |
+| Weather | ❌ Inactive | Kalshi series inactive |
 
 ---
 
-## Polymarket Whale Conviction
+## NEXT STEPS
 
-### On-Chain Analysis (`fetchers/polymarket-onchain.ts`)
+1. **Immediate** (This Week):
+   - [ ] Create `src/models/time-decay.ts` with Powell Predictor patterns
+   - [ ] Create `src/output/premium-discord.ts` with new alert format
+   - [ ] Fix team alias conflicts in `src/data/teams.ts`
 
-Tracks top Polymarket traders' positions via Goldsky subgraphs:
-- Fetches liquid markets from Gamma API
-- Queries position data for known whale wallets
-- Calculates conviction strength based on position concentration
-- Finds cross-platform edges where whale conviction differs from Kalshi price
+2. **Short-term** (2 Weeks):
+   - [ ] Implement Polymarket WebSocket client
+   - [ ] Add liquidity display to all alerts
+   - [ ] Set up PM2 daemon mode
 
-### Edge Detection (`edge/cross-platform-conviction.ts`)
-
-When whale implied price diverges from Kalshi by >5%:
-- Creates edge opportunity with direction guidance
-- Includes conviction strength and whale count
-- Routes to whale conviction Discord channel
-
----
-
-## Config (.env)
-
-Required: `DISCORD_WEBHOOK_URL` or `DISCORD_BOT_TOKEN`
-Optional: `KALSHI_API_KEY_ID`, `NEWS_API_KEY`, `ODDS_API_KEY`, `BANKROLL`, `MIN_EDGE_THRESHOLD`
-
-### Discord Channels (Optional)
-
-For segmented alerts aligned with Kalshi categories:
-- `DISCORD_WEBHOOK_SPORTS` - NFL, NBA, MLB, NHL, NCAAF, NCAAB
-- `DISCORD_WEBHOOK_WEATHER` - Temperature, precipitation, climate
-- `DISCORD_WEBHOOK_ECONOMICS` - Fed rates, CPI, Jobs, GDP
-- `DISCORD_WEBHOOK_MENTIONS` - Fed speech keywords, earnings mentions
-- `DISCORD_WEBHOOK_ENTERTAINMENT` - Movies, RT scores, box office, awards
-- `DISCORD_WEBHOOK_HEALTH` - Measles, disease tracking
-- `DISCORD_WEBHOOK_POLITICS` - Elections, government, policy
-- `DISCORD_WEBHOOK_CRYPTO` - Bitcoin, Ethereum, crypto markets
-- `DISCORD_WEBHOOK_DIGEST` - Daily summary
-- `DISCORD_WEBHOOK_STATUS` - System health
+3. **Medium-term** (1 Month):
+   - [ ] Twitter sentiment integration
+   - [ ] Enhanced slash commands
+   - [ ] Backtesting framework
 
 ---
 
-## Tracked Topics (config.ts)
-
-39 topics across categories:
-
-### Politics
-- trump, biden, election, impeachment
-
-### Crypto
-- bitcoin, ethereum, crypto_regulation
-
-### Entertainment
-- oscars, grammys, emmys, golden_globes, box_office, rotten_tomatoes, streaming, billboard, tv_ratings
-
-### Sports (Comprehensive)
-- **nfl**: All 32 teams + general keywords
-- **nba**: All 30 teams + general keywords
-- **mlb**: All 30 teams + general keywords
-- **nhl**: All 32 teams + general keywords
-- **college_football**: ~80 keywords (major programs + mascots)
-- **college_basketball**: ~50 keywords (powerhouses)
-- **soccer, golf, tennis, mma**
-- **sports_injury**: Injury-related keywords for overreaction detection
-
-### Geopolitics
-- ukraine, israel, china, tariffs
-
-### Macro
-- fed_rate, fed_speech, fomc_minutes, inflation, recession, jobs, gdp
-
-### Other
-- ai, hurricane
-
----
-
-## Extending
-
-- Add new RSS feeds in `config.ts` → `RSS_FEEDS`
-- Add tracked topics in `config.ts` → `TRACKED_TOPICS`
-- Add whale accounts in `config.ts` → `KNOWN_WHALES`
-- Add entity aliases in `analysis/cross-platform.ts` → `ENTITY_ALIASES`
-- Add sentiment words in `analysis/sentiment.ts` → `CUSTOM_LEXICON`
-- Adjust position sizing in `analysis/position-sizing.ts`
-
----
-
-## P0 Data Sources (Sustainable, No API Keys)
-
-### ESPN Sports Odds (`fetchers/espn-odds.ts`)
-
-Public ESPN API for real-time sports odds without API key requirements:
-
-```typescript
-// Supported sports
-const ESPN_SPORTS = ['nfl', 'nba', 'nhl', 'mlb', 'ncaaf', 'ncaab'];
-
-// Fetches moneylines, spreads, and over/unders
-const odds = await fetchSportsOddsESPN('nfl');
-// Returns: { homeTeam, awayTeam, spread, homeML, awayML, overUnder, ... }
-```
-
-**Edge Detection:**
-- Sharp vs Square money detection (line movement analysis)
-- Consensus comparison with Kalshi prices
-- Injury news correlation with line moves
-
-### CDC Health Surveillance (`fetchers/cdc-surveillance.ts`)
-
-CDC NWSS (National Wastewater Surveillance System) data:
-
-```typescript
-// Wastewater leads reported cases by 7-14 days
-const wastewater = await fetchWastewaterData();
-// Returns: { region, pathogen, level, percentChange, trend }
-
-// FluView weekly surveillance
-const flu = await fetchFluData();
-// Returns: { region, week, iliRate, positivityRate, activityLevel }
-```
-
-**Edge Detection:**
-- Wastewater trend → case count prediction
-- Compare CDC projections vs market expectations
-- Historical pattern matching for seasonal diseases
-
-### Crypto Funding Rates (`fetchers/crypto-funding.ts`)
-
-Hyperliquid DeFi perpetuals (no geo-blocking, works in US):
-
-```typescript
-// Funding rates + open interest
-const funding = await fetchFundingRates();
-// Returns: { symbol, weightedFundingRate, totalOpenInterest, extremeLevel, contrarian }
-
-// Fear & Greed Index (contrarian indicator)
-const fg = await fetchFearGreedIndex();
-// Returns: { value, classification, previousValue }
-```
-
-**Edge Detection:**
-- Extreme funding (>0.1% or <-0.1%) = contrarian signal
-- Fear & Greed extremes (<20 or >80) = reversal likelihood
-- Open interest divergence from price
-
-### Fed Nowcasts (`fetchers/fed-nowcasts.ts`)
-
-Real-time economic projections from Federal Reserve banks:
-
-```typescript
-// Atlanta Fed GDPNow
-const gdp = await fetchGDPNow();
-// Returns: { estimate, quarter, year, previousEstimate, change }
-
-// Cleveland Fed Inflation Nowcast
-const inflation = await fetchInflationNowcast();
-// Returns: { estimate, previousEstimate, trend }
-```
-
-**Edge Detection:**
-- GDPNow vs market GDP expectations
-- Inflation nowcast vs Fed target/market pricing
-- Revision direction momentum
-
-### Whale Performance Tracking (`edge/whale-performance.ts`)
-
-Historical win rate tracking for Polymarket whales by category:
-
-```typescript
-// Record whale predictions
-recordWhalePrediction(wallet, market, category, side, entryPrice);
-
-// Get category-specific confidence boost
-const boost = getWhaleEdgeBoost(wallet, 'crypto');
-// Returns: { boost: 1.2, reasoning: "70% win rate in crypto (15 predictions)" }
-
-// Leaderboard by category
-const leaders = getWhaleLeaderboard('politics', minPredictions=5);
-```
-
-**Edge Detection:**
-- Weight whale signals by their domain expertise
-- Fade whales with poor category-specific records
-- Identify specialists (e.g., politics-only traders)
-
----
-
-## Current Channel Audit (Jan 2026)
-
-| Channel | Status | Signals | Notes |
-|---------|--------|---------|-------|
-| Sports | ✅ Working | ESPN odds (64 games), injury signals | No longer needs ODDS_API_KEY |
-| Weather | ⚠️ Limited | 0 open markets | Kalshi weather series appear inactive |
-| Economics | ✅ Working | GDPNow, inflation nowcasts | KXGDP/KXCPI series may be seasonal |
-| Mentions | ✅ Strong | Fed + earnings keywords | 95% edge on some earnings mentions |
-| Entertainment | ⚠️ Limited | RT movies unreleased | Need box office prediction data |
-| Health | ✅ Working | CDC wastewater, measles edges | Wastewater leads cases 7-14 days |
-| Politics | ⚠️ Limited | Polling data sparse | Need 538/RCP integration |
-| Crypto | ✅ Working | Funding rates, Fear/Greed, cross-platform | Hyperliquid + divergence detection |
-| Whale Conviction | ✅ Strong | 47+ signals per scan | Now with performance tracking |
-| New Markets | ✅ Working | 400+ new markets detected | Early mover edge calculation |
-
----
-
-## Roadmap
-
-### Completed
-- [x] ESPN sports odds (replaces The Odds API)
-- [x] CDC wastewater surveillance
-- [x] Crypto funding rates via Hyperliquid
-- [x] Fed nowcasts (GDPNow, inflation)
-- [x] Whale historical performance tracking
-- [x] Cross-platform matching improvements
-- [x] Multi-channel Discord routing
-
-### Current Sprint (P1)
-- [ ] Integrate ESPN odds into sports edge pipeline
-- [ ] Add CDC wastewater to health channel alerts
-- [ ] Implement funding rate contrarian signals
-- [ ] Wire up whale performance boosts to conviction scoring
-- [ ] Add Fed transcript historical baselines
-
-### Near-term (P2)
-- [ ] 538/RCP polling aggregation for politics
-- [ ] Box office prediction models for entertainment
-- [ ] NWS forecast comparison for weather
-- [ ] Sharp money steam move detection
-
-### Medium-term
-- [ ] Machine learning model for edge prediction
-- [ ] Automated trade execution via Kalshi API
-- [ ] Portfolio tracking and P&L reporting
-- [ ] Backtesting framework for strategy validation
-
-### Long-term
-- [ ] Multi-exchange arbitrage detection
-- [ ] Custom market creation recommendations
-- [ ] Community sentiment aggregation
-- [ ] Mobile push notifications
-
----
-
-## Data Storage
-
-Calibration data stored in `data/`:
-- `predictions.json` - All prediction records
-- `calibration.json` - Latest calibration report
-- `whale_predictions.json` - Whale prediction history
-- `whale_performance.json` - Whale win rates by category
+*Last Updated: January 2026*
+*Version: 3.0.0-roadmap*
