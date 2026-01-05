@@ -11,7 +11,14 @@
     "test": "vitest",
     "run-now": "tsx src/index.ts --run-now",
     "bot": "tsx src/index.ts --bot",
-    "scan": "tsx src/index.ts --scan"
+    "scan": "tsx src/index.ts --scan",
+    "daemon:start": "./scripts/start-daemon.sh start",
+    "daemon:stop": "./scripts/start-daemon.sh stop",
+    "daemon:restart": "./scripts/start-daemon.sh restart",
+    "daemon:status": "./scripts/start-daemon.sh status",
+    "daemon:logs": "./scripts/start-daemon.sh logs",
+    "daemon:monitor": "./scripts/start-daemon.sh monitor",
+    "daemon:autostart": "./scripts/start-daemon.sh autostart"
   },
   "repository": {
     "type": "git",

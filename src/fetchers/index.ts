@@ -177,3 +177,17 @@ export {
   type InflationNowcast,
   type EconomicEdgeSignal,
 } from './fed-nowcasts.js';
+
+// Google Trends (search interest monitoring)
+export {
+  fetchTrendData,
+  checkTrendSpikes,
+  scanAllTrends,
+  matchTrendsToMarkets,
+  formatTrendAlerts,
+  formatTrendSummary,
+  TREND_CATEGORIES,
+  type SearchTrend,
+  type TrendAlert,
+  type TrendCategory,
+} from './google-trends.js';

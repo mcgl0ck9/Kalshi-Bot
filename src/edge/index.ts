@@ -54,3 +54,4 @@ export * from './measles-edge.js';
 export * from './earnings-edge.js';
 export * from './line-move-detector.js';
 export * from './time-decay-edge.js';
+export * from './spread-arbitrage.js';
