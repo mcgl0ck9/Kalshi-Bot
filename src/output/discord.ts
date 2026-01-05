@@ -141,15 +141,23 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     lines.push('');
     lines.push(`${urgencyEmoji} **Expires: ${timeStr}**`);
 
-    // Show theta decay if significant
+    // Plain English time pressure explanation (no options jargon)
     if (td.theta > 0.05) {
-      const thetaPct = (td.theta * 100).toFixed(0);
-      lines.push(`📉 Theta decay: ${thetaPct}% (~${(td.thetaPerDay * 100).toFixed(2)}%/day)`);
+      // Translate theta into plain English based on urgency
+      if (td.urgencyLevel === 'critical') {
+        lines.push('⚡ **Time pressure: HIGH** - Edge shrinks quickly as expiry approaches');
+        lines.push(`   Edge decays ~${(td.thetaPerDay * 100).toFixed(1)}% per day`);
+      } else if (td.urgencyLevel === 'high') {
+        lines.push('⏰ **Time pressure: MODERATE** - Don\'t wait too long to act');
+        lines.push(`   Edge decays ~${(td.thetaPerDay * 100).toFixed(1)}% per day`);
+      } else {
+        lines.push('📆 **Time pressure: LOW** - Plenty of time, can use limit orders');
+      }
     }
 
-    // Adjusted edge if different from raw
+    // Adjusted edge if different from raw (plain language)
     if (Math.abs(td.adjustedEdge - edge) > 0.005) {
-      lines.push(`Edge after decay: +${(td.adjustedEdge * 100).toFixed(1)}%`);
+      lines.push(`   (Accounting for time, effective edge is +${(td.adjustedEdge * 100).toFixed(1)}%)`);
     }
 
     // Order type recommendation
@@ -255,6 +263,59 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
       lines.push(`Opener: ${(lm.openingProb * 100).toFixed(0)}%`);
     }
     lines.push(lm.reasoning);
+  } else if (signals.weather) {
+    // Premium weather alert with full evidence
+    const w = signals.weather;
+    const weatherIcon = w.measurementType === 'snow' ? '❄️' :
+                        w.measurementType === 'rain' ? '🌧️' : '🌡️';
+
+    // Show the specific bucket they should bet on
+    if (w.bucket) {
+      lines.push(`**${weatherIcon} Bucket: ${w.bucket}**`);
+      if (w.ticker) {
+        lines.push(`Ticker: \`${w.ticker}\``);
+      }
+    }
+    lines.push('');
+
+    // Evidence box - show the data sources
+    lines.push('**📊 Evidence:**');
+    lines.push('```');
+    lines.push(`Month-to-date: ${w.monthToDate.toFixed(1)} ${w.unit}`);
+    lines.push(`Days remaining: ${w.daysRemaining}`);
+    lines.push(`Historical avg: ${w.historicalAverage.toFixed(1)} ${w.unit}/month`);
+    lines.push(`Variability:   ±${w.historicalStdDev.toFixed(1)} ${w.unit} (std dev)`);
+    lines.push('```');
+
+    // Probability comparison
+    lines.push('');
+    lines.push('**🎯 Analysis:**');
+    const ourProb = w.climatologicalProb * 100;
+    const marketProb = w.marketPrice * 100;
+    const probDiff = Math.abs(ourProb - marketProb);
+    lines.push(`Our estimate: ${ourProb.toFixed(0)}% chance of >${w.threshold}${w.unit}`);
+    lines.push(`Market price: ${marketProb.toFixed(0)}%`);
+    lines.push(`Gap: ${probDiff.toFixed(0)} percentage points`);
+
+    // Plain English explanation
+    lines.push('');
+    if (w.measurementType === 'snow') {
+      const needed = w.threshold - w.monthToDate;
+      if (needed > 0) {
+        lines.push(`💡 ${w.city} needs ${needed.toFixed(1)}" more snow in ${w.daysRemaining} days.`);
+        if (needed > w.historicalAverage * 0.8) {
+          lines.push(`   That's a LOT - historical avg is only ${w.historicalAverage.toFixed(1)}"/month.`);
+        } else if (needed < w.historicalAverage * 0.3) {
+          lines.push(`   Very achievable - avg is ${w.historicalAverage.toFixed(1)}"/month.`);
+        }
+      } else {
+        lines.push(`💡 ${w.city} already has ${w.monthToDate.toFixed(1)}" - threshold met!`);
+      }
+    }
+
+    // Data source attribution
+    lines.push('');
+    lines.push('_Source: NOAA 30-year climate normals + Open-Meteo MTD_');
   } else {
     lines.push(`Confidence: ${(confidence * 100).toFixed(0)}%`);
   }

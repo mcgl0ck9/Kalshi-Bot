@@ -563,6 +563,33 @@ export async function analyzeCityWeatherMarkets(
  * Convert city weather edge to EdgeOpportunity
  */
 export function cityWeatherEdgeToOpportunity(edge: CityWeatherEdge): EdgeOpportunity {
+  // Use the actual market subtitle or title as the bucket - don't generate fake buckets!
+  // The market subtitle typically contains the actual bucket option from Kalshi
+  const title = edge.market.title ?? '';
+  const subtitle = edge.market.subtitle ?? '';
+  let bucket: string | undefined;
+
+  // CRITICAL: Use the market's actual subtitle first - this is the real Kalshi option
+  if (subtitle) {
+    // Subtitle is the actual bucket (e.g., "4 to 8 inches", "Above 12 inches")
+    bucket = subtitle;
+  } else {
+    // Try to extract bucket range from title (e.g., "4 to 8 inches", "Above 12")
+    const rangeMatch = title.match(/(\d+)\s*(?:to|-)\s*(\d+)\s*inch/i);
+    const aboveMatch = title.match(/(?:above|over|more than)\s*(\d+)/i);
+    const belowMatch = title.match(/(?:below|under|less than)\s*(\d+)/i);
+
+    if (rangeMatch) {
+      bucket = `${rangeMatch[1]}-${rangeMatch[2]} inches`;
+    } else if (aboveMatch) {
+      bucket = `Above ${aboveMatch[1]} inches`;
+    } else if (belowMatch) {
+      bucket = `Below ${belowMatch[1]} inches`;
+    }
+    // NOTE: Removed the fallback that generated fake bucket names like "26+ inches"
+    // If we can't determine the real bucket, leave it undefined
+  }
+
   return {
     market: edge.market,
     source: 'sentiment', // Categorize under macro/sentiment
@@ -571,7 +598,23 @@ export function cityWeatherEdgeToOpportunity(edge: CityWeatherEdge): EdgeOpportu
     urgency: Math.abs(edge.edge) > 0.15 ? 'critical' : 'standard',
     direction: edge.direction === 'buy_yes' ? 'BUY YES' : 'BUY NO',
     signals: {
-      weatherBias: edge.reasoning,
+      weatherBias: edge.reasoning, // Keep for backwards compatibility
+      weather: {
+        city: edge.city,
+        measurementType: edge.measurementType,
+        threshold: edge.threshold,
+        unit: edge.unit,
+        bucket,
+        ticker: edge.market.ticker,
+        // Evidence data
+        monthToDate: edge.currentMonthTotal,
+        daysRemaining: edge.daysRemaining,
+        historicalAverage: edge.historicalAverage,
+        historicalStdDev: edge.historicalStdDev,
+        // Probability analysis
+        climatologicalProb: edge.probabilityAboveThreshold,
+        marketPrice: edge.kalshiPrice,
+      },
     },
   };
 }

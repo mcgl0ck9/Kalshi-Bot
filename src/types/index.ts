@@ -91,8 +91,39 @@ export interface EdgeOpportunity {
     fedRegime?: string;
     injuryOverreaction?: number;
     // Weather and bias signals
-    weatherBias?: string;
+    weatherBias?: string;  // DEPRECATED: Use weather instead
     recencyBias?: boolean;
+    // City weather edge with full evidence
+    weather?: {
+      city: string;
+      measurementType: 'snow' | 'rain' | 'temperature';
+      threshold: number;
+      unit: string;
+      bucket?: string;              // e.g., "4-8 inches" for range markets
+      ticker?: string;              // Exact ticker for this bucket
+      // Evidence data (the WHY)
+      monthToDate: number;          // Current accumulation
+      daysRemaining: number;        // Days left in month
+      historicalAverage: number;    // 30-year NOAA average
+      historicalStdDev: number;     // Standard deviation
+      // Probability analysis
+      climatologicalProb: number;   // Our estimate based on data
+      marketPrice: number;          // What Kalshi is pricing
+      // Forecast data (if available)
+      forecast?: {
+        source: string;             // e.g., "NWS Chicago"
+        expectedRemaining: number;  // Expected remaining accumulation
+        confidence: string;         // e.g., "high", "medium", "low"
+      };
+      // Other buckets in this series (for grouping)
+      allBuckets?: Array<{
+        threshold: number;
+        bucket: string;
+        ticker: string;
+        price: number;
+        edge: number;
+      }>;
+    };
     // Polymarket whale conviction (on-chain data)
     whaleConviction?: {
       polymarketPrice: number;

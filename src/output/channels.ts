@@ -264,15 +264,24 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
     lines.push('');
     lines.push(`${urgencyEmoji} **Expires: ${timeStr}**`);
 
-    // Show theta decay if significant
+    // Plain English time pressure explanation (no options jargon)
     if (td.theta > 0.05) {
-      const thetaPct = (td.theta * 100).toFixed(0);
-      lines.push(`📉 Theta: ${thetaPct}% (~${(td.thetaPerDay * 100).toFixed(2)}%/day)`);
+      // Translate theta into plain English based on urgency
+      if (td.urgencyLevel === 'critical') {
+        lines.push('⚡ **Time pressure: HIGH** - Edge shrinks quickly as expiry approaches');
+        lines.push(`   Edge decays ~${(td.thetaPerDay * 100).toFixed(1)}% per day`);
+      } else if (td.urgencyLevel === 'high') {
+        lines.push('⏰ **Time pressure: MODERATE** - Don\'t wait too long to act');
+        lines.push(`   Edge decays ~${(td.thetaPerDay * 100).toFixed(1)}% per day`);
+      } else {
+        lines.push('📆 **Time pressure: LOW** - Plenty of time, can use limit orders');
+      }
     }
 
-    // Adjusted edge if different from raw
+    // Adjusted edge if different from raw (plain language)
     if (Math.abs(td.adjustedEdge - edge) > 0.005) {
-      lines.push(`Edge after decay: +${(td.adjustedEdge * 100).toFixed(1)}%`);
+      const edgeDiff = (edge - td.adjustedEdge) * 100;
+      lines.push(`   (Accounting for time, effective edge is +${(td.adjustedEdge * 100).toFixed(1)}%)`);
     }
 
     // Order type recommendation
@@ -390,6 +399,59 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
       lines.push(`Opener: ${(lm.openingProb * 100).toFixed(0)}%`);
     }
     lines.push(lm.reasoning);
+  } else if (signals.weather) {
+    // Premium weather alert with full evidence
+    const w = signals.weather;
+    const weatherIcon = w.measurementType === 'snow' ? '❄️' :
+                        w.measurementType === 'rain' ? '🌧️' : '🌡️';
+
+    // Show the specific bucket they should bet on
+    if (w.bucket) {
+      lines.push(`**${weatherIcon} Bucket: ${w.bucket}**`);
+      if (w.ticker) {
+        lines.push(`Ticker: \`${w.ticker}\``);
+      }
+    }
+    lines.push('');
+
+    // Evidence box - show the data sources
+    lines.push('**📊 Evidence:**');
+    lines.push('```');
+    lines.push(`Month-to-date: ${w.monthToDate.toFixed(1)} ${w.unit}`);
+    lines.push(`Days remaining: ${w.daysRemaining}`);
+    lines.push(`Historical avg: ${w.historicalAverage.toFixed(1)} ${w.unit}/month`);
+    lines.push(`Variability:   ±${w.historicalStdDev.toFixed(1)} ${w.unit} (std dev)`);
+    lines.push('```');
+
+    // Probability comparison
+    lines.push('');
+    lines.push('**🎯 Analysis:**');
+    const ourProb = w.climatologicalProb * 100;
+    const marketProb = w.marketPrice * 100;
+    const probDiff = Math.abs(ourProb - marketProb);
+    lines.push(`Our estimate: ${ourProb.toFixed(0)}% chance of >${w.threshold}${w.unit}`);
+    lines.push(`Market price: ${marketProb.toFixed(0)}%`);
+    lines.push(`Gap: ${probDiff.toFixed(0)} percentage points`);
+
+    // Plain English explanation
+    lines.push('');
+    if (w.measurementType === 'snow') {
+      const needed = w.threshold - w.monthToDate;
+      if (needed > 0) {
+        lines.push(`💡 ${w.city} needs ${needed.toFixed(1)}" more snow in ${w.daysRemaining} days.`);
+        if (needed > w.historicalAverage * 0.8) {
+          lines.push(`   That's a LOT - historical avg is only ${w.historicalAverage.toFixed(1)}"/month.`);
+        } else if (needed < w.historicalAverage * 0.3) {
+          lines.push(`   Very achievable - avg is ${w.historicalAverage.toFixed(1)}"/month.`);
+        }
+      } else {
+        lines.push(`💡 ${w.city} already has ${w.monthToDate.toFixed(1)}" - threshold met!`);
+      }
+    }
+
+    // Data source attribution
+    lines.push('');
+    lines.push('_Source: NOAA 30-year climate normals + Open-Meteo MTD_');
   } else {
     lines.push(`Confidence: ${(confidence * 100).toFixed(0)}%`);
   }
@@ -410,6 +472,27 @@ function formatClearAlert(opportunity: EdgeOpportunity): string {
 }
 
 /**
+ * Check if a market title looks like a parlay/combo (multiple outcomes bundled)
+ * These have deep linking issues so we skip them for now
+ */
+function isParlayOrComboMarket(title: string): boolean {
+  if (!title) return false;
+
+  // Parlay patterns: "yes Team1, yes Team2" or "Team1 AND Team2"
+  const yesNoCount = (title.match(/\b(yes|no)\s/gi) || []).length;
+  if (yesNoCount > 1) return true;
+
+  // Multiple teams with AND/&
+  if (title.match(/\b(and|&)\b.*\b(and|&)\b/i)) return true;
+
+  // "X, Y, Z to win" pattern (multiple teams)
+  const commaTeams = title.match(/,.*,.*(?:to\s+)?win/i);
+  if (commaTeams) return true;
+
+  return false;
+}
+
+/**
  * Validate a market for quality before alerting
  */
 function validateMarket(opportunity: EdgeOpportunity): string | null {
@@ -420,6 +503,12 @@ function validateMarket(opportunity: EdgeOpportunity): string | null {
   // Invalid or missing price
   if (!price || price <= 0) {
     return `invalid price: ${price}`;
+  }
+
+  // TEMPORARY: Skip parlay/combo markets - deep links are broken
+  // TODO: Re-enable when proper combo market URLs are implemented
+  if (isParlayOrComboMarket(title)) {
+    return `skipping parlay/combo market (deep link issues)`;
   }
 
   // Edge is unrealistically high (depends on signal type)
@@ -543,7 +632,8 @@ function isMultiOutcomeMarket(opp: EdgeOpportunity): boolean {
     opp.market.subtitle ||
     opp.signals.earnings ||
     opp.signals.fedSpeech ||
-    opp.signals.entertainment  // RT thresholds are multi-outcome
+    opp.signals.entertainment ||  // RT thresholds are multi-outcome
+    opp.signals.weather           // Weather thresholds (snow buckets) are multi-outcome
   );
 }
 
@@ -560,6 +650,11 @@ function getGroupingKey(opp: EdgeOpportunity): string {
   }
   if (opp.signals.entertainment) {
     return `entertainment:${opp.signals.entertainment.movieTitle}`;
+  }
+  if (opp.signals.weather) {
+    // Group by city + measurement type + month
+    const w = opp.signals.weather;
+    return `weather:${w.city}:${w.measurementType}`;
   }
   // For other multi-outcome, group by the base market title
   return `market:${opp.market.title}`;
@@ -596,6 +691,19 @@ function formatOutcomeLine(opp: EdgeOpportunity): string[] {
     return [
       `${urgencyMark}${dirEmoji} **Above ${ent.threshold}%** → ${opp.direction} @ ${price.toFixed(0)}¢ (Edge: +${(opp.edge * 100).toFixed(0)}%)`,
       `   _Current: ${scoreIcon}${ent.currentScore}% | Buffer: ${bufferText} points_`,
+    ];
+  }
+
+  if (opp.signals.weather) {
+    const w = opp.signals.weather;
+    const weatherIcon = w.measurementType === 'snow' ? '❄️' :
+                        w.measurementType === 'rain' ? '🌧️' : '🌡️';
+    const bucketLabel = w.bucket ?? `>${w.threshold}${w.unit}`;
+    const needed = w.threshold - w.monthToDate;
+    const neededText = needed > 0 ? `needs ${needed.toFixed(1)}${w.unit} more` : 'threshold met';
+    return [
+      `${urgencyMark}${dirEmoji} **${weatherIcon} ${bucketLabel}** → ${opp.direction} @ ${price.toFixed(0)}¢ (Edge: +${(opp.edge * 100).toFixed(0)}%)`,
+      `   _${neededText} | ${w.daysRemaining}d left | Ticker: ${w.ticker ?? 'N/A'}_`,
     ];
   }
 
@@ -640,6 +748,33 @@ function generateRecommendation(opps: EdgeOpportunity[], key: string): string[] 
       lines.push('**💡 Best Value:**');
       lines.push(`"${fed.keyword}" appears in ${(fed.historicalFrequency * 100).toFixed(0)}% of Fed transcripts historically.`);
       lines.push(`Market at ${(best.market.price * 100).toFixed(0)}¢ offers +${(best.edge * 100).toFixed(0)}% edge.`);
+    }
+  } else if (key.startsWith('weather:')) {
+    const w = best.signals.weather;
+    if (w) {
+      const weatherIcon = w.measurementType === 'snow' ? '❄️' :
+                          w.measurementType === 'rain' ? '🌧️' : '🌡️';
+      lines.push('**💡 Recommended Bucket:**');
+      lines.push(`${weatherIcon} **${w.bucket ?? `>${w.threshold}${w.unit}`}** offers the best edge at +${(best.edge * 100).toFixed(0)}%.`);
+
+      // Explain the reasoning in plain English
+      const needed = w.threshold - w.monthToDate;
+      if (needed > 0) {
+        if (needed > w.historicalAverage * 0.8) {
+          lines.push(`${w.city} needs ${needed.toFixed(1)}${w.unit} more in ${w.daysRemaining} days - that's a LOT given the historical average of ${w.historicalAverage.toFixed(1)}${w.unit}/month.`);
+          lines.push(`The market is likely OVERPRICED.`);
+        } else if (needed < w.historicalAverage * 0.3) {
+          lines.push(`${w.city} only needs ${needed.toFixed(1)}${w.unit} more in ${w.daysRemaining} days - very achievable.`);
+          lines.push(`The market may be UNDERPRICED.`);
+        } else {
+          lines.push(`${w.city} needs ${needed.toFixed(1)}${w.unit} more in ${w.daysRemaining} days. Historical avg is ${w.historicalAverage.toFixed(1)}${w.unit}/month.`);
+        }
+      } else {
+        lines.push(`${w.city} already has ${w.monthToDate.toFixed(1)}${w.unit} - threshold is MET.`);
+      }
+
+      lines.push('');
+      lines.push('_Data: NOAA 30-year climate normals + Open-Meteo month-to-date_');
     }
   } else {
     // Generic multi-outcome
@@ -699,6 +834,23 @@ export async function sendGroupedMultiOutcomeAlerts(
       header = `🎬 **${movieTitle}** - Rotten Tomatoes`;
       contextLine = `Current Score: ${scoreIcon} **${ent?.currentScore ?? '?'}%** (${ent?.reviewCount ?? '?'} reviews)`;
       channel = 'entertainment';
+    } else if (key.startsWith('weather:')) {
+      // Parse weather key: weather:city:measurementType
+      const parts = key.split(':');
+      const city = parts[1] ?? 'Unknown';
+      const measurementType = parts[2] ?? 'weather';
+      const w = opps[0].signals.weather;
+      const weatherIcon = measurementType === 'snow' ? '❄️' :
+                          measurementType === 'rain' ? '🌧️' : '🌡️';
+
+      // Capitalize city name
+      const cityDisplay = city.charAt(0).toUpperCase() + city.slice(1).replace('_', ' ');
+
+      header = `${weatherIcon} **${cityDisplay} ${measurementType.charAt(0).toUpperCase() + measurementType.slice(1)}** - January 2026`;
+      if (w) {
+        contextLine = `Month-to-date: **${w.monthToDate.toFixed(1)}${w.unit}** | Historical avg: ${w.historicalAverage.toFixed(1)}${w.unit}/mo | ${w.daysRemaining} days left`;
+      }
+      channel = 'weather';
     } else {
       // Generic multi-outcome (politics, etc.)
       header = `📋 **${opps[0].market.title}**`;

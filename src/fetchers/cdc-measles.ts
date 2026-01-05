@@ -312,6 +312,10 @@ function calculateHistoricalAverage(years: number): number {
  *
  * Key insight: Early in the year, we should rely more on historical data
  * and less on the current (near-zero) YTD count.
+ *
+ * CRITICAL FIX: For thresholds well below the expected baseline,
+ * probability should be HIGH (not 50-60%). If last year had 2041 cases,
+ * the probability of exceeding 1500 should be ~80-95%, not 60%.
  */
 export function calculateExceedanceProbability(
   data: MeaslesData,
@@ -329,37 +333,67 @@ export function calculateExceedanceProbability(
   }
 
   // CRITICAL: Early in year, use historical data not current YTD
-  // Week 1-8: Heavy reliance on history (last year had 2000+ cases!)
+  // Week 1-8: Heavy reliance on history
   if (weekNumber <= 8) {
-    // Use log-normal distribution based on historical data
+    // Use the higher of last year or historical average as baseline
     const baselineEstimate = Math.max(lastYearTotal, historicalAverage);
-    const stdDev = baselineEstimate * 0.8; // High variance for measles
 
-    // Log-normal parameters
-    const logMean = Math.log(baselineEstimate);
-    const logStd = Math.log(1 + (stdDev / baselineEstimate) ** 2) ** 0.5;
+    // SIMPLE HEURISTIC that matches common sense:
+    // If threshold is well below baseline, probability is HIGH
+    // If threshold is well above baseline, probability is LOW
+    const ratio = threshold / baselineEstimate;
 
-    // Probability of exceeding threshold under historical distribution
-    const logThreshold = Math.log(threshold);
-    const z = (logThreshold - logMean) / logStd;
-    const histProb = 1 - normalCDF(z);
+    let histProb: number;
+    if (ratio <= 0.5) {
+      // Threshold is less than half of baseline - very likely to exceed
+      // E.g., >1000 when baseline is 2000+ → ~95%+
+      histProb = 0.95 + (0.5 - ratio) * 0.08; // 95-99%
+    } else if (ratio <= 0.75) {
+      // Threshold is 50-75% of baseline - likely to exceed
+      // E.g., >1500 when baseline is 2000 → ~80-90%
+      histProb = 0.80 + (0.75 - ratio) * 0.6; // 80-95%
+    } else if (ratio <= 1.0) {
+      // Threshold is 75-100% of baseline - moderate probability
+      // E.g., >1800 when baseline is 2000 → ~50-80%
+      histProb = 0.50 + (1.0 - ratio) * 1.2; // 50-80%
+    } else if (ratio <= 1.5) {
+      // Threshold is 100-150% of baseline - unlikely but possible
+      // E.g., >3000 when baseline is 2000 → ~15-50%
+      histProb = 0.50 - (ratio - 1.0) * 0.7; // 15-50%
+    } else if (ratio <= 2.0) {
+      // Threshold is 150-200% of baseline - quite unlikely
+      // E.g., >4000 when baseline is 2000 → ~5-15%
+      histProb = 0.15 - (ratio - 1.5) * 0.2; // 5-15%
+    } else {
+      // Threshold is >200% of baseline - very unlikely
+      // E.g., >5000 when baseline is 2000 → ~2-5%
+      histProb = Math.max(0.02, 0.05 - (ratio - 2.0) * 0.03);
+    }
 
-    // Blend with YTD projection as weeks progress
-    const ytdWeight = weekNumber / 16; // Full weight by week 16
+    // Clamp to reasonable bounds
+    histProb = Math.max(0.02, Math.min(0.98, histProb));
+
+    // Blend with YTD projection as weeks progress (but give histProb more weight early)
+    const ytdWeight = weekNumber / 20; // Very gradual shift to YTD data
     const histWeight = 1 - ytdWeight;
 
-    // Calculate YTD-based probability (will be low early in year)
-    let ytdProb = 0.01;
-    if (projectedYearEnd > 0) {
-      const ytdZ = (threshold - projectedYearEnd) / Math.max(baselineEstimate * 0.5, 100);
-      ytdProb = 1 - normalCDF(ytdZ);
+    // Calculate YTD-based probability (will be low early in year since YTD is near 0)
+    let ytdProb = histProb; // Default to historical if we can't calculate YTD
+    if (projectedYearEnd > 0 && weekNumber > 2) {
+      // Only use YTD projection if we have enough data
+      const ytdRatio = threshold / projectedYearEnd;
+      if (ytdRatio <= 1.0) {
+        ytdProb = 0.50 + (1.0 - ytdRatio) * 0.45; // 50-95% if threshold < projection
+      } else {
+        ytdProb = Math.max(0.05, 0.50 - (ytdRatio - 1.0) * 0.4); // 5-50% if threshold > projection
+      }
     }
 
     const blendedProb = histWeight * histProb + ytdWeight * ytdProb;
 
     return {
       threshold,
-      probability: Math.max(0.01, Math.min(0.99, blendedProb)),
+      probability: Math.max(0.02, Math.min(0.98, blendedProb)),
       confidence: projectionConfidence * 0.5, // Low confidence early in year
     };
   }
