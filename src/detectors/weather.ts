@@ -25,6 +25,12 @@ import {
   type SourceData,
 } from '../core/index.js';
 import { logger } from '../utils/index.js';
+import {
+  WEATHER_CONFIG,
+  analyzeTimeHorizon,
+  meetsTimeHorizonThreshold,
+  preFilterMarkets,
+} from '../utils/time-horizon.js';
 
 // =============================================================================
 // CONFIGURATION
@@ -223,10 +229,17 @@ export default defineDetector({
     const edges: Edge[] = [];
 
     // Filter to weather-related markets
-    const weatherMarkets = markets.filter(m => {
+    const allWeatherMarkets = markets.filter(m => {
       const { isWeather } = detectWeatherMarket(m);
       return isWeather;
     });
+
+    // Apply time horizon pre-filter (0-3d good, 4-7d higher edge, 7+ filter unless extreme)
+    const weatherMarkets = preFilterMarkets(allWeatherMarkets, WEATHER_CONFIG, 14);
+    const filteredCount = allWeatherMarkets.length - weatherMarkets.length;
+    if (filteredCount > 0) {
+      logger.info(`Weather detector: Filtered ${filteredCount} far-dated weather markets`);
+    }
 
     if (weatherMarkets.length === 0) {
       logger.debug('Weather detector: No weather markets found');
@@ -260,6 +273,11 @@ export default defineDetector({
 
       if (absEdge < MIN_EDGE) continue;
 
+      // Apply time horizon threshold check
+      if (!meetsTimeHorizonThreshold(market, absEdge, WEATHER_CONFIG, 'Weather')) {
+        continue;
+      }
+
       const direction = edge > 0 ? 'YES' : 'NO';
 
       // Confidence based on horizon and edge magnitude
@@ -269,11 +287,12 @@ export default defineDetector({
       if (absEdge > 0.10) confidence += 0.1;
       confidence = Math.min(confidence, 0.80);
 
-      const reason = `Weather edge: ${eventType} market. ` +
-        `Horizon: ${horizon}d (skill: ${(skillWeight * 100).toFixed(0)}%). ` +
-        `Market: ${(market.price * 100).toFixed(0)}%, Base rate: ${(baseRate * 100).toFixed(0)}%, ` +
-        `Adjusted: ${(adjustedProbability * 100).toFixed(0)}%. ` +
-        `Forecast skill degradation + ${eventType} bias applied.`;
+      // Enhanced WHY rationale with time context
+      const { label: timeLabel } = analyzeTimeHorizon(market, WEATHER_CONFIG);
+      const reason = `${timeLabel} | **WEATHER** ${eventType.toUpperCase()} | ` +
+        `Horizon: ${horizon}d (skill: ${(skillWeight * 100).toFixed(0)}%) | ` +
+        `Market: ${(market.price * 100).toFixed(0)}% vs Climatology: ${(baseRate * 100).toFixed(0)}% | ` +
+        `→ **${(absEdge * 100).toFixed(1)}% edge** after bias adjustment`;
 
       const signal: WeatherEdgeSignal = {
         type: 'weather',
@@ -296,7 +315,7 @@ export default defineDetector({
     }
 
     if (edges.length > 0) {
-      logger.info(`Weather detector: Found ${edges.length} edges`);
+      logger.info(`Weather detector: Found ${edges.length} edges (after time horizon filtering)`);
     }
 
     return edges;

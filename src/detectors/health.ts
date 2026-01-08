@@ -13,6 +13,12 @@ import {
   type SourceData,
 } from '../core/index.js';
 import { logger } from '../utils/index.js';
+import {
+  HEALTH_CONFIG,
+  analyzeTimeHorizon,
+  meetsTimeHorizonThreshold,
+  preFilterMarkets,
+} from '../utils/time-horizon.js';
 import { calculateExceedanceProbability, type MeaslesData } from '../sources/cdc-measles.js';
 
 // =============================================================================
@@ -49,19 +55,35 @@ export default defineDetector({
     }
 
     // Find health-related markets
-    const healthMarkets = markets.filter(m =>
+    const allHealthMarkets = markets.filter(m =>
       m.category === 'health' ||
       m.title.toLowerCase().includes('measles') ||
       m.title.toLowerCase().includes('disease')
     );
 
+    // Apply time horizon pre-filter (filter vague long-term predictions)
+    const healthMarkets = preFilterMarkets(allHealthMarkets, HEALTH_CONFIG, 180);
+    const filteredCount = allHealthMarkets.length - healthMarkets.length;
+    if (filteredCount > 0) {
+      logger.info(`Health detector: Filtered ${filteredCount} far-dated health markets`);
+    }
+
+    if (healthMarkets.length === 0) {
+      logger.debug('Health detector: No health markets found');
+      return edges;
+    }
+
     logger.info(`Health detector: Analyzing ${healthMarkets.length} health markets`);
 
     for (const market of healthMarkets) {
       const edge = analyzeMeaslesMarket(market, measlesData);
-      if (edge) {
+      if (edge && meetsTimeHorizonThreshold(market, edge.edge, HEALTH_CONFIG, 'Health')) {
         edges.push(edge);
       }
+    }
+
+    if (edges.length > 0) {
+      logger.info(`Health detector: Found ${edges.length} edges (after time horizon filtering)`);
     }
 
     return edges;
@@ -99,8 +121,8 @@ function analyzeMeaslesMarket(market: Market, data: MeaslesData): Edge | null {
   // Determine direction
   const direction = probability > marketPrice ? 'YES' : 'NO';
 
-  // Build reason
-  const reason = buildReason(data, threshold, probability, marketPrice, direction);
+  // Build reason with time horizon context
+  const reason = buildReason(market, data, threshold, probability, marketPrice, direction, edge);
 
   return createEdge(
     market,
@@ -134,22 +156,30 @@ function extractThreshold(title: string): number | null {
 }
 
 function buildReason(
+  market: Market,
   data: MeaslesData,
   threshold: number,
   probability: number,
   marketPrice: number,
-  direction: 'YES' | 'NO'
+  direction: 'YES' | 'NO',
+  edge: number
 ): string {
   const probPct = (probability * 100).toFixed(0);
   const pricePct = (marketPrice * 100).toFixed(0);
+  const edgePct = (edge * 100).toFixed(1);
+
+  // Get time horizon context
+  const { label: timeLabel } = analyzeTimeHorizon(market, HEALTH_CONFIG);
 
   if (direction === 'YES') {
-    return `CDC shows ${data.casesYTD} cases YTD (week ${data.weekNumber}), ` +
-      `projecting ${data.projectedYearEnd} year-end. ` +
-      `${probPct}% chance of exceeding ${threshold} vs ${pricePct}% market price.`;
+    return `${timeLabel} | **HEALTH** CDC Surveillance | ` +
+      `${data.casesYTD} cases YTD (week ${data.weekNumber}) → ${data.projectedYearEnd} projected | ` +
+      `${probPct}% exceeds ${threshold} vs ${pricePct}% mkt | ` +
+      `→ **${edgePct}% edge**`;
   } else {
-    return `CDC shows ${data.casesYTD} cases YTD (week ${data.weekNumber}), ` +
-      `projecting ${data.projectedYearEnd} year-end. ` +
-      `Only ${probPct}% chance of exceeding ${threshold}, but market prices YES at ${pricePct}%.`;
+    return `${timeLabel} | **HEALTH** CDC Surveillance | ` +
+      `${data.casesYTD} cases YTD (week ${data.weekNumber}) → ${data.projectedYearEnd} projected | ` +
+      `Only ${probPct}% exceeds ${threshold}, mkt ${pricePct}% | ` +
+      `→ **${edgePct}% edge**`;
   }
 }

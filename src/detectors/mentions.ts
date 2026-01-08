@@ -25,6 +25,11 @@ import {
   type SourceData,
 } from '../core/index.js';
 import { logger } from '../utils/index.js';
+import {
+  MENTIONS_CONFIG,
+  analyzeTimeHorizon,
+  meetsTimeHorizonThreshold,
+} from '../utils/time-horizon.js';
 import type {
   MentionsMarketsData,
   MentionsMarket,
@@ -131,10 +136,37 @@ export default defineDetector({
       return edges;
     }
 
-    logger.info(`Mentions detector: Analyzing ${mentionsData.markets.length} mentions markets`);
+    // Pre-filter mentions markets by time horizon (3 weeks, prioritize closer earnings)
+    const filteredMarkets = mentionsData.markets.filter(m => {
+      // Create a pseudo-Market for time horizon check
+      const pseudoMarket: Market = {
+        platform: 'kalshi',
+        id: m.seriesTicker,
+        title: `${m.company} mentions ${m.keywords[0]?.keyword ?? ''}`,
+        category: 'other',
+        price: m.keywords[0]?.yesPrice ?? 0.5,
+        url: m.keywords[0]?.url ?? `https://kalshi.com/markets/${m.seriesTicker}`,
+        closeTime: m.closeTime, // Use market close time
+      };
+      const { daysToExpiry, tier } = analyzeTimeHorizon(pseudoMarket, MENTIONS_CONFIG);
+
+      // Filter out markets more than 21 days out unless we have very strong signals
+      if (daysToExpiry > 21 && tier === 'too_far') {
+        logger.debug(`Mentions: Filtering "${m.company}" - earnings ${Math.ceil(daysToExpiry)}d out`);
+        return false;
+      }
+      return true;
+    });
+
+    const filteredCount = mentionsData.markets.length - filteredMarkets.length;
+    if (filteredCount > 0) {
+      logger.info(`Mentions detector: Filtered ${filteredCount} far-dated earnings calls`);
+    }
+
+    logger.info(`Mentions detector: Analyzing ${filteredMarkets.length} mentions markets`);
 
     // Process each mentions market
-    for (const mentionsMarket of mentionsData.markets) {
+    for (const mentionsMarket of filteredMarkets) {
       const companyTicker = mentionsMarket.companyTicker;
 
       // Get company transcripts if available
@@ -142,6 +174,17 @@ export default defineDetector({
 
       // Get company media appearances if available
       const companyMedia = mediaData ? getCompanyAppearances(mediaData, companyTicker) : [];
+
+      // Create pseudo-market for time horizon checks
+      const pseudoMarket: Market = {
+        platform: 'kalshi',
+        id: mentionsMarket.seriesTicker,
+        title: `${mentionsMarket.company} mentions`,
+        category: 'other',
+        price: 0.5,
+        url: mentionsMarket.keywords[0]?.url ?? `https://kalshi.com/markets/${mentionsMarket.seriesTicker}`,
+        closeTime: mentionsMarket.closeTime,
+      };
 
       // Analyze each keyword in this market
       for (const keyword of mentionsMarket.keywords) {
@@ -153,7 +196,7 @@ export default defineDetector({
             companyMedia,
             mediaData
           );
-          if (mediaEdge) {
+          if (mediaEdge && meetsTimeHorizonThreshold(pseudoMarket, mediaEdge.edge, MENTIONS_CONFIG, 'Mentions')) {
             edges.push(mediaEdge);
           }
         }
@@ -165,7 +208,7 @@ export default defineDetector({
             keyword,
             companyTranscripts
           );
-          if (earningsEdge) {
+          if (earningsEdge && meetsTimeHorizonThreshold(pseudoMarket, earningsEdge.edge, MENTIONS_CONFIG, 'Mentions')) {
             edges.push(earningsEdge);
           }
         }
@@ -177,7 +220,7 @@ export default defineDetector({
           companyTranscripts,
           companyMedia
         );
-        if (frequencyEdge) {
+        if (frequencyEdge && meetsTimeHorizonThreshold(pseudoMarket, frequencyEdge.edge, MENTIONS_CONFIG, 'Mentions')) {
           edges.push(frequencyEdge);
         }
       }
@@ -187,7 +230,7 @@ export default defineDetector({
     const dedupedEdges = deduplicateEdges(edges);
 
     if (dedupedEdges.length > 0) {
-      logger.info(`Mentions detector: Found ${dedupedEdges.length} edges (deduplicated from ${edges.length})`);
+      logger.info(`Mentions detector: Found ${dedupedEdges.length} edges (after time horizon filtering, deduplicated from ${edges.length})`);
     }
 
     return dedupedEdges;

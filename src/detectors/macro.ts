@@ -18,6 +18,12 @@ import {
   type SourceData,
 } from '../core/index.js';
 import { logger } from '../utils/index.js';
+import {
+  ECON_CONFIG,
+  analyzeTimeHorizon,
+  meetsTimeHorizonThreshold,
+  preFilterMarkets,
+} from '../utils/time-horizon.js';
 import type { FedNowcastData, GDPNowcast, InflationNowcast } from '../sources/fed-nowcasts.js';
 import type { OptionsImpliedData, FedFundsImplied } from '../sources/options-implied.js';
 
@@ -67,10 +73,17 @@ export const macroDetector = defineDetector({
     }
 
     // Filter to macro category markets
-    const macroMarkets = markets.filter(m =>
+    const allMacroMarkets = markets.filter(m =>
       m.category === 'macro' ||
       classifyMacroMarket(m).type !== 'none'
     );
+
+    // Apply time horizon pre-filter (3 weeks, with futures requiring extreme edge)
+    const macroMarkets = preFilterMarkets(allMacroMarkets, ECON_CONFIG, 60);
+    const filteredCount = allMacroMarkets.length - macroMarkets.length;
+    if (filteredCount > 0) {
+      logger.info(`Macro detector: Filtered ${filteredCount} far-dated markets`);
+    }
 
     logger.debug(`Macro detector: Analyzing ${macroMarkets.length} macro markets`);
 
@@ -97,12 +110,13 @@ export const macroDetector = defineDetector({
           break;
       }
 
-      if (edge && edge.edge >= MIN_EDGE) {
+      // Apply time horizon threshold check
+      if (edge && edge.edge >= MIN_EDGE && meetsTimeHorizonThreshold(market, edge.edge, ECON_CONFIG, 'Macro')) {
         edges.push(edge);
       }
     }
 
-    logger.info(`Macro detector: Found ${edges.length} edges`);
+    logger.info(`Macro detector: Found ${edges.length} edges (after time horizon filtering)`);
     return edges;
   },
 });

@@ -24,6 +24,12 @@ import {
 } from '../core/index.js';
 import { logger } from '../utils/index.js';
 import {
+  POLITICS_CONFIG,
+  analyzeTimeHorizon,
+  meetsTimeHorizonThreshold,
+  preFilterMarkets,
+} from '../utils/time-horizon.js';
+import {
   comparePollingToMarket,
   type PollingData,
   type PollingEdgeSignal,
@@ -105,7 +111,14 @@ export default defineDetector({
     logger.debug(`Polling detector: Data from ${pollingData.sources.join(', ')}`);
 
     // Find political markets
-    const politicalMarkets = markets.filter(isPoliticalMarket);
+    const allPoliticalMarkets = markets.filter(isPoliticalMarket);
+
+    // Apply time horizon pre-filter (30d priority, 60+ higher edge, year+ filter)
+    const politicalMarkets = preFilterMarkets(allPoliticalMarkets, POLITICS_CONFIG, 365);
+    const filteredCount = allPoliticalMarkets.length - politicalMarkets.length;
+    if (filteredCount > 0) {
+      logger.info(`Polling detector: Filtered ${filteredCount} far-dated political markets`);
+    }
 
     if (politicalMarkets.length === 0) {
       logger.debug('Polling detector: No political markets found');
@@ -132,15 +145,33 @@ export default defineDetector({
         continue;
       }
 
+      const edgeDecimal = signal.edge / 100;
+
+      // Apply time horizon threshold check
+      if (!meetsTimeHorizonThreshold(market, edgeDecimal, POLITICS_CONFIG, 'Politics')) {
+        continue;
+      }
+
       const edge = createPollingEdge(market, signal, pollingData);
       edges.push(edge);
     }
 
     // Also check for approval rating markets directly
     const approvalEdges = detectApprovalEdges(politicalMarkets, pollingData);
-    edges.push(...approvalEdges);
+    for (const edge of approvalEdges) {
+      if (meetsTimeHorizonThreshold(
+        politicalMarkets.find(m => m.ticker === edge.market.ticker) ?? edge.market,
+        edge.edge,
+        POLITICS_CONFIG,
+        'Politics'
+      )) {
+        edges.push(edge);
+      }
+    }
 
-    logger.info(`Polling detector: Found ${edges.length} polling edges`);
+    if (edges.length > 0) {
+      logger.info(`Polling detector: Found ${edges.length} edges (after time horizon filtering)`);
+    }
     return edges;
   },
 });
@@ -227,7 +258,7 @@ function createPollingEdge(
 ): Edge {
   const edgeDecimal = signal.edge / 100;  // Convert percentage to decimal
 
-  const reason = buildReason(signal, polling);
+  const reason = buildReason(market, signal, polling);
 
   return createEdge(
     market,
@@ -314,9 +345,14 @@ function analyzeApprovalThreshold(
   const direction = probability > marketPrice ? 'YES' : 'NO';
   const confidence = Math.min(0.85, 0.5 + polling.sources.length * 0.1);
 
-  const reason = `${rating.politician} approval at ${currentApproval.toFixed(1)}% (${rating.source}). ` +
-    `Estimated ${(probability * 100).toFixed(0)}% chance of exceeding ${threshold}% vs ` +
-    `market price ${(marketPrice * 100).toFixed(0)}%.`;
+  // Get time horizon context
+  const { label: timeLabel } = analyzeTimeHorizon(market, POLITICS_CONFIG);
+  const edgePct = (edge * 100).toFixed(1);
+
+  const reason = `${timeLabel} | **POLITICS** Approval | ` +
+    `${rating.politician} at ${currentApproval.toFixed(1)}% (${rating.source}) | ` +
+    `P(>${threshold}%): ${(probability * 100).toFixed(0)}% vs Mkt: ${(marketPrice * 100).toFixed(0)}% | ` +
+    `→ **${edgePct}% edge**`;
 
   return createEdge(
     market,
@@ -338,14 +374,16 @@ function analyzeApprovalThreshold(
 }
 
 /**
- * Build human-readable reason string
+ * Build human-readable reason string with time horizon context
  */
-function buildReason(signal: PollingEdgeSignal, polling: PollingData): string {
-  const direction = signal.direction === 'YES' ? 'BUY YES' : 'BUY NO';
+function buildReason(market: Market, signal: PollingEdgeSignal, polling: PollingData): string {
+  const { label: timeLabel } = analyzeTimeHorizon(market, POLITICS_CONFIG);
+  const edgePct = signal.edge.toFixed(1);
 
-  return `Polling implies ${signal.pollingImplied.toFixed(0)}% vs market ${signal.marketPrice.toFixed(0)}%. ` +
-    `${signal.reasoning}. ` +
-    `Sources: ${polling.sources.join(', ')}.`;
+  return `${timeLabel} | **POLITICS** ${signal.candidate} | ` +
+    `Polling: ${signal.pollingImplied.toFixed(0)}% vs Mkt: ${signal.marketPrice.toFixed(0)}% | ` +
+    `${signal.reasoning} | Sources: ${polling.sources.join(', ')} | ` +
+    `→ **${edgePct}% edge**`;
 }
 
 // =============================================================================
