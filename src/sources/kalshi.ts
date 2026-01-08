@@ -46,15 +46,27 @@ export default defineSource<Market[]>({
       logger.warn('Kalshi auth not configured, fetching limited markets');
     }
 
-    // Fetch each series
+    // Fetch each series with progress logging
+    let fetchedCount = 0;
+    const startTime = Date.now();
     for (const series of SERIES_TO_FETCH) {
       try {
+        const seriesStart = Date.now();
         const markets = await fetchSeriesMarkets(series);
         allMarkets.push(...markets);
+        fetchedCount++;
+        const elapsed = ((Date.now() - seriesStart) / 1000).toFixed(1);
+        if (markets.length > 0) {
+          logger.info(`Kalshi: ${series} → ${markets.length} markets (${elapsed}s) [${fetchedCount}/${SERIES_TO_FETCH.length}]`);
+        }
       } catch (error) {
-        logger.debug(`Failed to fetch series ${series}: ${error}`);
+        fetchedCount++;
+        logger.warn(`Kalshi: ${series} failed [${fetchedCount}/${SERIES_TO_FETCH.length}]: ${error}`);
       }
     }
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(0);
+    logger.info(`Kalshi: Completed in ${totalTime}s`);
+
 
     logger.info(`Fetched ${allMarkets.length} Kalshi markets from ${SERIES_TO_FETCH.length} series`);
     return allMarkets;
@@ -84,11 +96,17 @@ interface KalshiResponse {
 }
 
 /**
- * Fetch all active markets for a series.
+ * Fetch active markets for a series (with pagination limit).
+ *
+ * Note: Some series (crypto) have 1000+ markets. We limit to 5 pages
+ * (500 markets) per series to prevent hanging. Most edge opportunities
+ * are in the first few pages anyway.
  */
 async function fetchSeriesMarkets(seriesTicker: string): Promise<Market[]> {
   const markets: Market[] = [];
   let cursor: string | undefined;
+  let pageCount = 0;
+  const MAX_PAGES = 5;  // 500 markets max per series
 
   do {
     const url = cursor
@@ -97,6 +115,8 @@ async function fetchSeriesMarkets(seriesTicker: string): Promise<Market[]> {
 
     const data = await kalshiFetchJson<KalshiResponse>(url);
     if (!data?.markets) break;
+
+    pageCount++;
 
     for (const m of data.markets) {
       if (m.status !== 'active') continue;
@@ -120,6 +140,12 @@ async function fetchSeriesMarkets(seriesTicker: string): Promise<Market[]> {
     }
 
     cursor = data.cursor;
+
+    // Stop if we've hit the page limit
+    if (pageCount >= MAX_PAGES && cursor) {
+      logger.debug(`${seriesTicker}: Hit ${MAX_PAGES} page limit, stopping (more pages available)`);
+      break;
+    }
   } while (cursor);
 
   return markets;

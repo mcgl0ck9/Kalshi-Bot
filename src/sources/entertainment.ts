@@ -49,6 +49,27 @@ const TRACKED_MOVIES = [
   { slug: 'superman_2025', title: 'Superman' },
   { slug: 'fantastic_four_first_steps', title: 'Fantastic Four' },
   { slug: 'avatar_fire_and_ash', title: 'Avatar 3' },
+  // Additional movies from Kalshi RT markets (Jan 2026)
+  { slug: 'shelter_2026', title: 'Shelter' },  // Opens Jan 30, 2026
+  { slug: 'send_help', title: 'Send Help' },    // Opens Jan 30, 2026
+  { slug: 'melania', title: 'Melania' },        // Upcoming Kalshi market
+  { slug: 'primate', title: 'Primate' },
+  { slug: 'dog_man', title: 'Dog Man' },
+  { slug: 'paddington_in_peru', title: 'Paddington in Peru' },
+  { slug: 'den_of_thieves_2_pantera', title: 'Den of Thieves 2' },
+  { slug: 'flight_risk', title: 'Flight Risk' },
+  { slug: 'companion_2025', title: 'Companion' },
+  { slug: 'babygirl', title: 'Babygirl' },
+  { slug: 'wolf_man_2025', title: 'Wolf Man' },
+  { slug: 'love_me', title: 'Love Me' },
+  { slug: 'the_monkey', title: 'The Monkey' },
+  { slug: 'novocaine', title: 'Novocaine' },
+  { slug: 'bridget_jones_mad_about_the_boy', title: 'Bridget Jones: Mad About the Boy' },
+  { slug: 'black_bag', title: 'Black Bag' },
+  { slug: 'parthenope', title: 'Parthenope' },
+  { slug: 'last_breath', title: 'Last Breath' },
+  { slug: 'alto_knights', title: 'Alto Knights' },
+  { slug: 'a_working_man', title: 'A Working Man' },
 ];
 
 // =============================================================================
@@ -173,6 +194,30 @@ const TITLE_TO_SLUG: Record<string, string> = {
   'fantastic four': 'fantastic_four_first_steps',
   'avatar 3': 'avatar_fire_and_ash',
   'avatar fire and ash': 'avatar_fire_and_ash',
+  // Additional mappings for Jan 2026 movies
+  'shelter': 'shelter_2026',
+  'melania': 'melania',
+  'send help': 'send_help',
+  'primate': 'primate',
+  'dog man': 'dog_man',
+  'paddington in peru': 'paddington_in_peru',
+  'paddington': 'paddington_in_peru',
+  'den of thieves 2': 'den_of_thieves_2_pantera',
+  'den of thieves': 'den_of_thieves_2_pantera',
+  'flight risk': 'flight_risk',
+  'companion': 'companion_2025',
+  'babygirl': 'babygirl',
+  'wolf man': 'wolf_man_2025',
+  'love me': 'love_me',
+  'the monkey': 'the_monkey',
+  'novocaine': 'novocaine',
+  'bridget jones': 'bridget_jones_mad_about_the_boy',
+  'bridget jones mad about the boy': 'bridget_jones_mad_about_the_boy',
+  'black bag': 'black_bag',
+  'parthenope': 'parthenope',
+  'last breath': 'last_breath',
+  'alto knights': 'alto_knights',
+  'a working man': 'a_working_man',
 };
 
 /**
@@ -264,29 +309,84 @@ export function calculateRTEdge(
 }
 
 /**
- * Extract movie info from Kalshi market title.
+ * Extract movie info from Kalshi market title and optional subtitle.
+ *
+ * Handles various Kalshi formats:
+ * - Title: "Shelter Rotten Tomatoes score?" + Subtitle: "Above 90"
+ * - "Will Companion Rotten Tomatoes score be above 60%?"
+ * - "Will \"Babygirl\" have a Rotten Tomatoes score above 70%?"
+ * - "Flight Risk RT score above 50%"
  */
-export function extractMovieFromMarketTitle(marketTitle: string): {
+export function extractMovieFromMarketTitle(marketTitle: string, subtitle?: string): {
   movieTitle: string;
   threshold?: number;
 } | null {
-  // Pattern: "Movie Name Rotten Tomatoes score? Above X"
-  const pattern = /["']?([^"']+?)["']?\s+rotten\s+tomatoes\s+score\??\s+above\s+(\d+)/i;
-  const match = marketTitle.toLowerCase().match(pattern);
+  const title = marketTitle.toLowerCase();
 
-  if (match) {
+  // Pattern 0: "MovieName Rotten Tomatoes score?" (Kalshi's actual format)
+  // Threshold comes from subtitle "Above X"
+  const kalshiPattern = /^([^"']+?)\s+(?:rotten\s*tomatoes|rt)\s+score\??\s*$/i;
+  const kalshiMatch = title.match(kalshiPattern);
+  if (kalshiMatch) {
+    const movieTitle = kalshiMatch[1].trim();
+    let threshold: number | undefined;
+
+    // Extract threshold from subtitle
+    if (subtitle) {
+      const subtitleMatch = subtitle.match(/above\s+(\d+)/i);
+      if (subtitleMatch) {
+        threshold = parseInt(subtitleMatch[1], 10);
+      }
+    }
+
+    return { movieTitle, threshold };
+  }
+
+  // Pattern 1: "Will MOVIE Rotten Tomatoes score be above X%?"
+  // Also handles: "Will MOVIE RT score be above X%?"
+  const willPattern = /will\s+["']?([^"']+?)["']?\s+(?:rotten\s*tomatoes|rt)\s+score\s+(?:be\s+)?above\s+(\d+)/i;
+  const willMatch = title.match(willPattern);
+  if (willMatch) {
     return {
-      movieTitle: match[1].trim(),
-      threshold: parseInt(match[2], 10),
+      movieTitle: willMatch[1].trim(),
+      threshold: parseInt(willMatch[2], 10),
     };
   }
 
-  // Simple pattern: just look for RT mention
-  const simplePattern = /["']?([^"']+?)["']?\s+rotten\s+tomatoes/i;
-  const simpleMatch = marketTitle.toLowerCase().match(simplePattern);
+  // Pattern 2: "Will \"MOVIE\" have a Rotten Tomatoes score above X%?"
+  const havePattern = /will\s+["']([^"']+)["']\s+have\s+a\s+(?:rotten\s*tomatoes|rt)\s+score\s+above\s+(\d+)/i;
+  const haveMatch = title.match(havePattern);
+  if (haveMatch) {
+    return {
+      movieTitle: haveMatch[1].trim(),
+      threshold: parseInt(haveMatch[2], 10),
+    };
+  }
 
-  if (simpleMatch) {
-    return { movieTitle: simpleMatch[1].trim() };
+  // Pattern 3: "MOVIE Rotten Tomatoes score? Above X"
+  const simpleAbovePattern = /["']?([^"']+?)["']?\s+(?:rotten\s*tomatoes|rt)\s+score\??\s+(?:be\s+)?above\s+(\d+)/i;
+  const simpleAboveMatch = title.match(simpleAbovePattern);
+  if (simpleAboveMatch) {
+    // Filter out common non-movie words that might be captured
+    const movieCandidate = simpleAboveMatch[1].trim();
+    if (!['will', 'the', 'a', 'have'].includes(movieCandidate)) {
+      return {
+        movieTitle: movieCandidate,
+        threshold: parseInt(simpleAboveMatch[2], 10),
+      };
+    }
+  }
+
+  // Pattern 4: Just "MOVIE Rotten Tomatoes" (no threshold)
+  const noThresholdPattern = /["']?([^"']+?)["']?\s+(?:rotten\s*tomatoes|rt)/i;
+  const noThresholdMatch = title.match(noThresholdPattern);
+  if (noThresholdMatch) {
+    const movieCandidate = noThresholdMatch[1].trim();
+    // Filter out common leading words
+    const cleaned = movieCandidate.replace(/^(will|the)\s+/i, '').trim();
+    if (cleaned && !['have', 'a'].includes(cleaned)) {
+      return { movieTitle: cleaned };
+    }
   }
 
   return null;
