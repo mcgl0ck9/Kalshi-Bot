@@ -509,8 +509,8 @@ function buildSportsOddsAliases(): Record<string, string[]> {
 
   for (const teams of allTeams) {
     for (const [teamKey, info] of Object.entries(teams)) {
-      // Use the last word of canonical name as key (team nickname)
-      const nickname = info.canonical.split(' ').pop()?.toLowerCase() ?? teamKey;
+      // Use the last word of fullName as key (team nickname)
+      const nickname = info.fullName.split(' ').pop()?.toLowerCase() ?? teamKey;
 
       // Combine aliases with lowercase abbreviations
       const allAliases = [

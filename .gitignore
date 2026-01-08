@@ -13,8 +13,9 @@ dist/
 logs/
 *.log
 
-# Data
-data/
+# Data (root data directory for runtime data, not src/data/)
+/data/
+!src/data/
 *.db
 *.sqlite
 

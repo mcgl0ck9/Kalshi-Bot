@@ -360,7 +360,7 @@ function extractKeyEntities(title: string): Set<string> {
 // =============================================================================
 
 // Combined set for quick lookup (uses imported sets from teams.ts)
-const ALL_SPORTS_TEAMS = ALL_SPORTS_TEAM_KEYS;
+const ALL_SPORTS_TEAMS = new Set(ALL_SPORTS_TEAM_KEYS);
 
 /**
  * Detect sports matchups between two sets of entities

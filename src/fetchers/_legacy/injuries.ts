@@ -527,8 +527,8 @@ export function getTeamInjurySummary(
   const healthScore = Math.max(0, 100 - (totalImpact * 20));
 
   return {
-    team: teamInfo.info.canonical,
-    teamAbbr: teamInfo.info.abbreviations[0] ?? '',
+    team: teamInfo.fullName,
+    teamAbbr: teamInfo.abbreviations[0] ?? '',
     sport: teamInjuries[0]?.sport ?? 'unknown',
     injuries: teamInjuries,
     healthScore,
