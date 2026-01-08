@@ -301,3 +301,97 @@ export function getLimitOrderAdjustmentFactor(daysToExpiry: number): number {
   if (daysToExpiry >= 7) return 0.9;
   return 1.0; // Use market order
 }
+
+// =============================================================================
+// EDGE OPPORTUNITY ENHANCEMENT (for output module compatibility)
+// =============================================================================
+
+import type { EdgeOpportunity } from '../types/index.js';
+import { suggestLimitOrder } from './limit-order.js';
+
+/**
+ * Enhance an EdgeOpportunity with time-decay signals and limit order suggestions
+ */
+export function enhanceWithTimeDecay(opportunity: EdgeOpportunity): EdgeOpportunity {
+  const { market, edge, direction } = opportunity;
+
+  // Calculate time decay model
+  const timeDecayModel = calculateTimeDecay(market.closeTime);
+
+  // Adjust edge for theta decay
+  const adjustedEdge = adjustEdgeForTheta(edge, market.closeTime);
+
+  // Calculate fair value based on direction
+  const fairValue = direction === 'BUY YES'
+    ? market.price + edge
+    : market.price - edge;
+
+  // Get limit order suggestion
+  const limitSuggestion = suggestLimitOrder(
+    fairValue,
+    market.price,
+    direction,
+    market.closeTime,
+    opportunity.sizing?.positionSize
+  );
+
+  // Add time decay signal to the opportunity
+  opportunity.signals.timeDecay = {
+    daysToExpiry: timeDecayModel.daysToExpiry,
+    hoursToExpiry: timeDecayModel.hoursToExpiry,
+    theta: timeDecayModel.theta,
+    thetaPerDay: timeDecayModel.thetaPerDay,
+    urgencyLevel: timeDecayModel.urgencyLevel,
+    recommendedOrderType: timeDecayModel.recommendedOrderType,
+    adjustedEdge: adjustedEdge.adjustedEdge,
+    limitOrderSuggestion: {
+      price: limitSuggestion.limitOrder.price,
+      fillProbability: limitSuggestion.limitOrder.fillProbability,
+      estimatedFillTime: limitSuggestion.limitOrder.estimatedFillTime ?? '~3 days',
+    },
+    reasoning: timeDecayModel.reasoning,
+  };
+
+  return opportunity;
+}
+
+/**
+ * Format time decay information for display
+ */
+export function formatTimeDecayInfo(opportunity: EdgeOpportunity): string {
+  const timeDecay = opportunity.signals.timeDecay;
+  if (!timeDecay) {
+    return '';
+  }
+
+  const urgencyEmoji =
+    timeDecay.urgencyLevel === 'critical' ? '🚨' :
+    timeDecay.urgencyLevel === 'high' ? '⚠️' :
+    timeDecay.urgencyLevel === 'medium' ? '⏳' : '📅';
+
+  const daysStr = timeDecay.daysToExpiry < 1
+    ? `${Math.round(timeDecay.hoursToExpiry)}h`
+    : `${Math.round(timeDecay.daysToExpiry)}d`;
+
+  const lines = [
+    `${urgencyEmoji} **Expires: ${daysStr}**`,
+    `📉 Theta: ${(timeDecay.theta * 100).toFixed(0)}% (~${(timeDecay.thetaPerDay * 100).toFixed(1)}%/day)`,
+    `Edge after decay: +${(timeDecay.adjustedEdge * 100).toFixed(1)}%`,
+    '',
+  ];
+
+  // Add order recommendation
+  const limitOrderSuggestion = timeDecay.limitOrderSuggestion;
+  if (limitOrderSuggestion && timeDecay.recommendedOrderType === 'limit') {
+    lines.push('💡 **Order Options:**');
+    lines.push(`MARKET @ ${(opportunity.market.price * 100).toFixed(0)}¢  → Instant fill, full edge`);
+    lines.push(`LIMIT  @ ${(limitOrderSuggestion.price * 100).toFixed(0)}¢  → ${(limitOrderSuggestion.fillProbability * 100).toFixed(0)}% fill in ~${limitOrderSuggestion.estimatedFillTime}`);
+    if (timeDecay.urgencyLevel !== 'low') {
+      lines.push('⚠️ Capital tied up until filled or cancelled');
+    }
+  } else {
+    lines.push('💡 **Recommendation:** MARKET ORDER (time-critical)');
+  }
+
+  return lines.join('\n');
+}

@@ -253,6 +253,19 @@ export interface EdgeOpportunity {
       classification: string;
       reasoning: string;
     };
+    // Crypto price bucket edge (BTC/ETH spot vs threshold)
+    cryptoPrice?: {
+      symbol: 'BTC' | 'ETH';
+      currentPrice: number;         // Current spot price
+      threshold: number;            // Market threshold (e.g., $90,000)
+      isAbove: boolean;             // true = "above threshold" market
+      impliedProb: number;          // Our probability estimate
+      marketPrice: number;          // Market's YES price
+      daysToExpiry: number;
+      // Secondary signals that influenced the edge
+      fundingSignal?: string;
+      fearGreedSignal?: string;
+    };
     // GDP nowcast edge (P0 data source)
     gdpNow?: {
       estimate: number;

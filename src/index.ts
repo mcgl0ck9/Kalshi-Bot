@@ -157,8 +157,9 @@ async function main(): Promise<void> {
 
   if (args.runNow) {
     // Run once
-    const result = await runPipeline(args.bankroll);
-    process.exit(result.success ? 0 : 1);
+    const result = await runPipeline();
+    const success = result.errors.length === 0;
+    process.exit(success ? 0 : 1);
   }
 
   // Default: run on schedule

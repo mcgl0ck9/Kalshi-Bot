@@ -14,7 +14,7 @@ import {
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type { EdgeOpportunity, CrossPlatformMatch, TopicSentiment, WhaleSignal } from '../types/index.js';
+import type { EdgeOpportunity, CrossPlatformMatch, TopicSentiment, WhaleSignal, Market } from '../types/index.js';
 import { logger } from '../utils/index.js';
 import { DISCORD_WEBHOOK_URL, DISCORD_BOT_TOKEN } from '../config.js';
 import {
@@ -23,15 +23,22 @@ import {
   searchRottenTomatoes,
   formatWeekendBoxOfficeReport,
   formatMovieScore,
-} from '../fetchers/entertainment.js';
+} from '../fetchers/_legacy/entertainment.js';
 import {
   formatTimeDecayInfo,
   enhanceWithTimeDecay,
-} from '../edge/time-decay-edge.js';
+} from '../models/index.js';
 import {
   formatLimitOrderDisplay,
   suggestLimitOrder,
 } from '../models/index.js';
+import {
+  buildEnhancedCommands,
+  handlePortfolioCommand,
+  handleAlertsCommand,
+  handleResearchCommand,
+  handleBacktestCommand,
+} from './slash-commands.js';
 
 // =============================================================================
 // WEBHOOK MESSAGING
@@ -241,14 +248,108 @@ export function formatEdgeAlert(opportunity: EdgeOpportunity): string {
     lines.push(`Sentiment: ${signals.sentiment.sentimentLabel} (${signals.sentiment.articleCount} articles)`);
   } else if (signals.entertainment) {
     const ent = signals.entertainment;
-    const scoreIcon = ent.currentScore >= 60 ? '🍅' : '🤢';
-    lines.push(`${scoreIcon} RT Score: ${ent.currentScore}% (${ent.reviewCount ?? 'unknown'} reviews)`);
-    lines.push(`Threshold: ${ent.threshold}% | Buffer: ${ent.buffer > 0 ? '+' : ''}${ent.buffer} points`);
-    if (ent.buffer > 0) {
-      lines.push(`Score is ABOVE threshold - high probability of staying above`);
+
+    // Only show real RT data - no speculation
+    if (ent.currentScore !== undefined && ent.reviewCount !== undefined && ent.reviewCount > 0) {
+      const scoreIcon = ent.currentScore >= 60 ? '🍅' : '🤢';
+
+      lines.push(`${scoreIcon} **Current RT Score: ${ent.currentScore}%**`);
+      lines.push(`   Based on ${ent.reviewCount} critic reviews`);
+      lines.push('');
+
+      // Clear explanation of the edge
+      if (ent.buffer > 0) {
+        lines.push(`📊 **The math:**`);
+        lines.push(`   Market threshold: ${ent.threshold}%`);
+        lines.push(`   Current score: ${ent.currentScore}% (${ent.buffer} points ABOVE)`);
+        lines.push('');
+        if (ent.buffer >= 10) {
+          lines.push(`✅ **Strong edge**: Score is ${ent.buffer} points above threshold.`);
+          lines.push(`   RT scores rarely drop 10+ points with ${ent.reviewCount}+ reviews.`);
+        } else if (ent.buffer >= 5) {
+          lines.push(`✅ **Moderate edge**: Score has ${ent.buffer} point cushion.`);
+          lines.push(`   Would need ${ent.buffer + 1}+ negative reviews to drop below.`);
+        } else {
+          lines.push(`⚠️ **Thin margin**: Only ${ent.buffer} points above threshold.`);
+          lines.push(`   Could swing with a few negative reviews.`);
+        }
+      } else {
+        const pointsBelow = Math.abs(ent.buffer);
+        lines.push(`📊 **The math:**`);
+        lines.push(`   Market threshold: ${ent.threshold}%`);
+        lines.push(`   Current score: ${ent.currentScore}% (${pointsBelow} points BELOW)`);
+        lines.push('');
+        lines.push(`❌ **Why it's unlikely to rise:**`);
+        lines.push(`   RT scores typically DROP over time as more critics review.`);
+        lines.push(`   Would need unusually positive late reviews to gain ${pointsBelow}+ points.`);
+      }
+
+      lines.push('');
+      lines.push(`_Source: Rotten Tomatoes (${ent.reviewCount} reviews)_`);
     } else {
-      lines.push(`Score is BELOW threshold - unlikely to rise`);
+      // No actual data - shouldn't happen but fallback
+      lines.push(`⚠️ No RT score data available yet`);
+      lines.push(`Movie may not be released or reviewed`);
     }
+  } else if (signals.cryptoPrice) {
+    // Crypto price bucket edge with current spot price context
+    const crypto = signals.cryptoPrice;
+    const priceStr = crypto.currentPrice.toLocaleString();
+    const thresholdStr = crypto.threshold.toLocaleString();
+    const diff = Math.abs(crypto.currentPrice - crypto.threshold);
+    const diffPct = ((diff / crypto.threshold) * 100).toFixed(1);
+    const above = crypto.currentPrice > crypto.threshold;
+
+    const symbol = crypto.symbol === 'BTC' ? '₿' : 'Ξ';
+    lines.push(`${symbol} **${crypto.symbol} Current Price: $${priceStr}**`);
+    lines.push('');
+
+    // Clear explanation based on current price vs threshold
+    if (above) {
+      lines.push(`📊 **The math:**`);
+      lines.push(`   Market threshold: $${thresholdStr}`);
+      lines.push(`   Current price: $${priceStr} (**${diffPct}% ABOVE**)`);
+      lines.push('');
+      if (crypto.daysToExpiry <= 1) {
+        lines.push(`✅ **Strong edge**: Price is $${diff.toLocaleString()} above threshold.`);
+        lines.push(`   With <24h to expiry, ${diffPct}% move down is very unlikely.`);
+      } else if (diff / crypto.currentPrice > 0.05) {
+        lines.push(`✅ **Solid edge**: Price has ${diffPct}% cushion above threshold.`);
+        lines.push(`   Would need a ${diffPct}%+ drop in ${crypto.daysToExpiry} days.`);
+      } else {
+        lines.push(`⚠️ **Thin margin**: Only ${diffPct}% above threshold.`);
+        lines.push(`   Crypto volatility could close this gap.`);
+      }
+    } else {
+      lines.push(`📊 **The math:**`);
+      lines.push(`   Market threshold: $${thresholdStr}`);
+      lines.push(`   Current price: $${priceStr} (**${diffPct}% BELOW**)`);
+      lines.push('');
+      if (crypto.daysToExpiry <= 1) {
+        lines.push(`❌ **Low probability**: Price is $${diff.toLocaleString()} below threshold.`);
+        lines.push(`   Would need ${diffPct}%+ rally in <24h - very unlikely.`);
+      } else {
+        lines.push(`❌ **Uphill climb**: Price needs ${diffPct}%+ rally.`);
+        lines.push(`   ${crypto.daysToExpiry} days may not be enough for such a move.`);
+      }
+    }
+
+    // Show probability assessment
+    lines.push('');
+    const impliedPct = (crypto.impliedProb * 100).toFixed(0);
+    const marketPct = (crypto.marketPrice * 100).toFixed(0);
+    lines.push(`Model estimate: ${impliedPct}% vs market ${marketPct}%`);
+
+    // Show secondary signals if present
+    if (crypto.fundingSignal) {
+      lines.push(`📈 ${crypto.fundingSignal}`);
+    }
+    if (crypto.fearGreedSignal) {
+      lines.push(`😱 ${crypto.fearGreedSignal}`);
+    }
+
+    lines.push('');
+    lines.push(`_Source: CoinGecko spot price, live data_`);
   } else if (signals.playerProp) {
     const pp = signals.playerProp;
     lines.push(`${pp.playerName}: ${pp.propType} ${pp.isOver ? 'Over' : 'Under'} ${pp.line}`);
@@ -447,7 +548,8 @@ export async function registerCommands(clientId: string, guildId?: string): Prom
     throw new Error('DISCORD_BOT_TOKEN not configured');
   }
 
-  const commands = [
+  // Basic commands
+  const basicCommands = [
     new SlashCommandBuilder()
       .setName('scan')
       .setDescription('Run an immediate market scan'),
@@ -474,15 +576,22 @@ export async function registerCommands(clientId: string, guildId?: string): Prom
       ),
   ].map(cmd => cmd.toJSON());
 
+  // Enhanced commands from slash-commands.ts
+  const enhancedCommands = buildEnhancedCommands();
+
+  // Combine all commands
+  const commands = [...basicCommands, ...enhancedCommands];
+
   const rest = new REST().setToken(DISCORD_BOT_TOKEN);
 
   try {
+    logger.info(`Registering ${commands.length} slash commands...`);
     if (guildId) {
       await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
     } else {
       await rest.put(Routes.applicationCommands(clientId), { body: commands });
     }
-    logger.info('Registered slash commands');
+    logger.info(`Registered ${commands.length} slash commands successfully`);
   } catch (error) {
     logger.error(`Failed to register commands: ${error}`);
   }
@@ -495,7 +604,9 @@ export async function startBot(
   onScan: () => Promise<void>,
   onWhales: () => Promise<string>,
   onDivergences: () => Promise<string>,
-  onStatus: () => Promise<string>
+  onStatus: () => Promise<string>,
+  onGetMarket?: (ticker: string) => Promise<Market | null>,
+  onGetWhalePositions?: (ticker: string) => Promise<any[]>
 ): Promise<void> {
   if (!DISCORD_BOT_TOKEN) {
     throw new Error('DISCORD_BOT_TOKEN not configured');
@@ -527,9 +638,9 @@ export async function startBot(
 
       switch (commandName) {
         case 'scan':
-          await interaction.followUp('🔍 Starting market scan...');
+          await interaction.followUp('Starting market scan...');
           await onScan();
-          await interaction.followUp('✅ Scan complete! Check the channel for results.');
+          await interaction.followUp('Scan complete! Check the channel for results.');
           break;
 
         case 'whales':
@@ -575,6 +686,33 @@ export async function startBot(
           } else {
             await interaction.followUp(`Could not find Rotten Tomatoes data for "${movieInput}"`);
           }
+          break;
+
+        // =================================================================
+        // ENHANCED COMMANDS (from slash-commands.ts)
+        // =================================================================
+
+        case 'portfolio':
+          const portfolioMsg = await handlePortfolioCommand(interaction);
+          await interaction.followUp(portfolioMsg.slice(0, 2000));
+          break;
+
+        case 'alerts':
+          const alertsMsg = await handleAlertsCommand(interaction);
+          await interaction.followUp(alertsMsg.slice(0, 2000));
+          break;
+
+        case 'research':
+          // Use provided callbacks or fallback to stub implementations
+          const getMarket = onGetMarket ?? (async () => null);
+          const getWhalePositions = onGetWhalePositions ?? (async () => []);
+          const researchMsg = await handleResearchCommand(interaction, getMarket, getWhalePositions);
+          await interaction.followUp(researchMsg.slice(0, 2000));
+          break;
+
+        case 'backtest':
+          const backtestMsg = await handleBacktestCommand(interaction);
+          await interaction.followUp(backtestMsg.slice(0, 2000));
           break;
 
         default:

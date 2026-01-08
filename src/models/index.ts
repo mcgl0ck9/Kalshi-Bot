@@ -18,6 +18,8 @@ export {
   getRecommendedOrderType,
   getLimitOrderAdjustmentFactor,
   formatThetaDisplay,
+  enhanceWithTimeDecay,
+  formatTimeDecayInfo,
   type TimeDecayModel,
   type ThetaAdjustedEdge,
   type ExpiryInfo,

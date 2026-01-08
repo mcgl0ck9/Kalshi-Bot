@@ -72,27 +72,37 @@ src/
 │   ├── sentiment.ts   # NLP sentiment analysis
 │   └── index.ts       # Registration
 │
-├── detectors/         # v4.0 Edge Detectors (6 files)
+├── detectors/         # v4.0 Edge Detectors (15 files)
+│   ├── arbitrage.ts       # Spread arbitrage detection
 │   ├── cross-platform.ts  # Kalshi vs Polymarket prices
+│   ├── entertainment.ts   # RT scores, box office edges
+│   ├── fed.ts             # Fed speech + regime detection
 │   ├── health.ts          # CDC data vs health markets
+│   ├── macro.ts           # Economic indicator edges
+│   ├── mentions.ts        # Earnings keyword analysis
+│   ├── ml-edge.ts         # LSTM ML predictions
+│   ├── new-markets.ts     # Early-mover advantage
+│   ├── polling.ts         # Political polling edges
 │   ├── sports.ts          # ESPN odds vs sports markets
 │   ├── sentiment.ts       # News sentiment divergence
+│   ├── time-decay.ts      # Theta-adjusted edges
+│   ├── weather.ts         # Climatological base rates
 │   ├── whale.ts           # Polymarket whale positions
 │   └── index.ts           # Registration
 │
-├── edge/              # Standalone Edge Detectors
-│   ├── mentions-edge.ts   # Mentions market edge detection
-│   └── ...                # Other edge detectors
+├── _legacy/           # Archived legacy code
+│   ├── edge/          # Legacy edge detectors (moved)
+│   └── pipeline/      # Legacy pipeline.ts
 │
 ├── v4.ts              # v4.0 entry point
 ├── index.ts           # Legacy v2 entry point
-├── pipeline.ts        # Legacy 8-step pipeline
 │
-├── fetchers/   (27)   # Legacy data fetchers
+├── fetchers/   (10)   # Active data fetchers
 ├── models/     (3)    # Time-decay, limit orders
 ├── realtime/   (4)    # WebSocket monitoring
-├── output/     (3)    # Discord output
-└── data/       (1)    # Team aliases
+├── output/     (4)    # Discord output + slash commands
+├── ml/         (9)    # Machine learning (LSTM + LR)
+└── data/       (1)    # Team aliases (213 teams)
 ```
 
 ## v4.0 Sources (18 Total)
@@ -118,16 +128,25 @@ src/
 | 17 | `cdc-surveillance` | health | 1 hour | Wastewater + flu surveillance |
 | 18 | `whale-discovery` | other | 30 min | Polymarket whale auto-discovery |
 
-## v4.0 Detectors (6 Total)
+## v4.0 Detectors (15 Total)
 
 | Detector | Signal | Min Edge | Sources Used |
 |----------|--------|----------|--------------|
+| `arbitrage` | Spread arbitrage (YES+NO < $1) | 2% | kalshi |
 | `cross-platform` | Kalshi vs Polymarket price divergence | 5% | kalshi, polymarket |
-| `health` | CDC data vs health market prices | 8% | kalshi, cdc-measles |
-| `sports` | ESPN odds vs sports market prices | 6% | kalshi, espn-sports |
+| `entertainment` | RT scores, box office vs market | 8% | kalshi, entertainment |
+| `fed` | Fed speech + regime bias | 5% | kalshi, fed-nowcasts, options-implied |
+| `health` | CDC data vs health market prices | 8% | kalshi, cdc-measles, cdc-surveillance |
+| `macro` | Economic indicators vs markets | 5% | kalshi, fed-nowcasts |
+| `mentions` | Earnings transcript keyword analysis | 3% | kalshi-mentions, earnings-transcripts, executive-media |
+| `ml-edge` | LSTM model price predictions | 5% | kalshi, news |
+| `new-markets` | Early-mover advantage on new markets | 5% | kalshi, polymarket |
+| `polling` | Political polling vs markets | 5% | kalshi, polling |
 | `sentiment` | News sentiment vs market prices | 8% | kalshi, news |
+| `sports` | ESPN odds vs sports market prices | 5% | kalshi, espn-sports, injuries |
+| `time-decay` | Theta-adjusted fair values | 4% | kalshi |
+| `weather` | Climatological base rates vs markets | 6% | kalshi, weather |
 | `whale` | Polymarket whale conviction | 8% | kalshi, polymarket |
-| `mentions` | Earnings transcript keyword analysis | 10% | kalshi-mentions, earnings-transcripts, executive-media |
 
 ## Mentions Edge Detection System
 
@@ -216,10 +235,10 @@ interface Market {
 
 ## Legacy System
 
-The v2 pipeline (`src/pipeline.ts`) remains functional for backward compatibility:
-- 8-step pipeline with 2000+ lines
-- Uses `src/fetchers/` and `src/edge/` modules
-- Accessed via `npm run scan` or `npm start`
+Legacy v2 code has been moved to `src/_legacy/` for reference:
+- Legacy pipeline: `src/_legacy/pipeline/pipeline.ts`
+- Legacy edge detectors: `src/_legacy/edge/`
+- Access via `npm run scan` (uses v4.0) or `npm run v4:scan`
 
 ## Key Dependencies
 

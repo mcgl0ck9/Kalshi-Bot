@@ -25,3 +25,19 @@ export {
   sendStatusUpdate,
   clearSentMarketsCache,
 } from './channels.js';
+
+// Enhanced slash commands
+export {
+  buildEnhancedCommands,
+  handlePortfolioCommand,
+  handleAlertsCommand,
+  handleResearchCommand,
+  handleBacktestCommand,
+  shouldReceiveAlert,
+  getUsersForAlert,
+  type Position,
+  type PortfolioData,
+  type UserAlertPreferences,
+  type AlertPreferencesData,
+  type BacktestResult,
+} from './slash-commands.js';

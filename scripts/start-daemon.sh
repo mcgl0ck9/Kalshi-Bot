@@ -44,7 +44,7 @@ start() {
     build_if_needed
 
     echo -e "${GREEN}Starting Kalshi Edge Detector daemon...${NC}"
-    pm2 start ecosystem.config.js
+    pm2 start ecosystem.config.cjs
 
     echo -e "${GREEN}Daemon started successfully!${NC}"
     echo ""
@@ -56,7 +56,7 @@ stop() {
     check_pm2
 
     echo -e "${YELLOW}Stopping Kalshi Edge Detector daemon...${NC}"
-    pm2 stop ecosystem.config.js
+    pm2 stop ecosystem.config.cjs
 
     echo -e "${GREEN}Daemon stopped.${NC}"
 }
@@ -67,7 +67,7 @@ restart() {
     build_if_needed
 
     echo -e "${YELLOW}Restarting Kalshi Edge Detector daemon...${NC}"
-    pm2 restart ecosystem.config.js
+    pm2 restart ecosystem.config.cjs
 
     echo -e "${GREEN}Daemon restarted.${NC}"
     echo ""

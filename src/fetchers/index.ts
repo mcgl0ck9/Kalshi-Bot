@@ -6,7 +6,7 @@ export {
   fetchAllRssFeeds,
   fetchNewsApi,
   fetchAllNews,
-} from './news.js';
+} from './_legacy/news.js';
 
 // Economic indicators
 export * from './economic/index.js';
@@ -38,7 +38,7 @@ export {
   type MovieScore,
   type BoxOfficeData,
   type UpcomingRelease,
-} from './entertainment.js';
+} from './_legacy/entertainment.js';
 
 // Options-implied probabilities
 export {
@@ -48,7 +48,7 @@ export {
   fetchAllOptionsImplied,
   findOptionsEdge,
   formatOptionsImpliedReport,
-} from './options-implied.js';
+} from './_legacy/options-implied.js';
 
 // Sports odds (The Odds API integration)
 export {
@@ -88,7 +88,7 @@ export {
   type PolymarketSignal,
   type GammaMarket,
   type RecentTrade,
-} from './polymarket-onchain.js';
+} from './_legacy/polymarket-onchain.js';
 
 // Whale auto-discovery
 export {
@@ -100,7 +100,7 @@ export {
   formatWhaleDiscoveryReport,
   type DiscoveredWhale,
   type WhaleDiscoveryResult,
-} from './whale-discovery.js';
+} from './_legacy/whale-discovery.js';
 
 // Transcript parsing (Fed speeches, earnings calls)
 export {
@@ -140,7 +140,7 @@ export {
   type ESPNGame,
   type ConsensusData,
   type SharpSquareSignal,
-} from './espn-odds.js';
+} from './_legacy/espn-odds.js';
 
 // CDC Health Surveillance (wastewater, flu)
 export {
@@ -151,7 +151,7 @@ export {
   type WastewaterData,
   type FluData as CDCFluData,
   type HealthEdgeSignal,
-} from './cdc-surveillance.js';
+} from './_legacy/cdc-surveillance.js';
 
 // Crypto Funding Rates & Sentiment
 export {
@@ -164,7 +164,7 @@ export {
   type FundingAggregate,
   type FearGreedIndex,
   type CryptoEdgeSignal,
-} from './crypto-funding.js';
+} from './_legacy/crypto-funding.js';
 
 // Fed Nowcasts (GDPNow, Inflation)
 export {
@@ -176,7 +176,7 @@ export {
   type GDPNowcast,
   type InflationNowcast,
   type EconomicEdgeSignal,
-} from './fed-nowcasts.js';
+} from './_legacy/fed-nowcasts.js';
 
 // Google Trends (search interest monitoring)
 export {
@@ -190,4 +190,4 @@ export {
   type SearchTrend,
   type TrendAlert,
   type TrendCategory,
-} from './google-trends.js';
+} from './_legacy/google-trends.js';

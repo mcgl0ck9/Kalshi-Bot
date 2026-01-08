@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../utils/index.js';
-import { getAllPredictions } from '../edge/calibration-tracker.js';
+import { getAllPredictions } from '../utils/calibration.js';
 import type { CalibrationRecord } from '../types/index.js';
 import {
   extractFeatures,
