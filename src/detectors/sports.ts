@@ -45,6 +45,35 @@ const MIN_CONFIDENCE = 0.55;
 const INJURY_OVERREACTION_THRESHOLD = 0.03;  // 3% overreaction
 const LINE_MOVE_THRESHOLD = 0.03;            // 3% move significant
 
+// Time horizon configuration
+const TIME_HORIZON = {
+  SAME_DAY: 1,                    // Days - highest priority
+  THIS_WEEK: 7,                   // Days - high priority
+  THIS_MONTH: 30,                 // Days - only with strong edge
+  EXTENDED: 60,                   // Days - only with extreme edge
+};
+
+// Edge thresholds by time horizon
+const EDGE_THRESHOLD_BY_HORIZON = {
+  SAME_DAY: 0.05,                 // 5% edge for today's games
+  THIS_WEEK: 0.05,                // 5% edge for this week
+  THIS_MONTH: 0.12,               // 12% edge required for 30-day markets
+  EXTENDED: 0.15,                 // 15% edge required for 30-60 day markets
+  FUTURES: 0.20,                  // 20% edge required for futures (championships)
+};
+
+// Keywords that identify futures/championship markets (filter these unless extreme edge)
+const FUTURES_KEYWORDS = [
+  'win super bowl', 'super bowl champion', 'super bowl winner',
+  'win world series', 'world series champion', 'world series winner',
+  'win nba championship', 'nba champion', 'nba finals winner',
+  'win stanley cup', 'stanley cup champion', 'stanley cup winner',
+  'win championship', 'league champion', 'conference champion',
+  'mvp', 'most valuable player', 'rookie of the year',
+  'win division', 'division winner', 'pennant',
+  'make playoffs', 'playoff berth',
+];
+
 // Team name normalization for matching
 const TEAM_ALIASES: Record<string, string[]> = {
   'chiefs': ['kansas city chiefs', 'kc chiefs', 'kansas city'],
@@ -102,30 +131,54 @@ export default defineDetector({
       return edges;
     }
 
-    // Find sports markets
-    const sportsMarkets = markets.filter(m =>
-      m.category === 'sports' || isSportsTitle(m.title)
-    );
+    // Find sports markets and apply initial time-horizon filter
+    const sportsMarkets = markets.filter(m => {
+      if (m.category !== 'sports' && !isSportsTitle(m.title)) {
+        return false;
+      }
+
+      // Pre-filter obvious futures markets that are too far out
+      const { isFutures, daysToExpiry } = analyzeTimeHorizon(m);
+      if (isFutures && daysToExpiry > 60) {
+        logger.debug(`Pre-filtering futures: "${m.title}" (${Math.ceil(daysToExpiry)} days out)`);
+        return false;
+      }
+
+      return true;
+    });
+
+    const filteredCount = markets.filter(m => m.category === 'sports' || isSportsTitle(m.title)).length - sportsMarkets.length;
+    if (filteredCount > 0) {
+      logger.info(`Sports detector: Filtered ${filteredCount} far-dated/futures markets`);
+    }
 
     logger.info(`Sports detector: Analyzing ${sportsMarkets.length} markets against ${sportsData.games.length} games`);
 
-    // 1. Cross-platform odds edges
+    // 1. Cross-platform odds edges (with time horizon filtering)
     for (const market of sportsMarkets) {
       const oddsEdge = detectOddsEdge(market, sportsData.games);
-      if (oddsEdge) {
+      if (oddsEdge && meetsTimeHorizonThreshold(market, oddsEdge.edge)) {
         edges.push(oddsEdge);
       }
     }
 
-    // 2. Injury overreaction edges
+    // 2. Injury overreaction edges (with time horizon filtering)
     if (injuryData) {
       const injuryEdges = detectInjuryOverreactionEdges(sportsMarkets, sportsData.games, injuryData);
-      edges.push(...injuryEdges);
+      for (const edge of injuryEdges) {
+        if (meetsTimeHorizonThreshold(edge.market, edge.edge)) {
+          edges.push(edge);
+        }
+      }
     }
 
-    // 3. Line movement edges
+    // 3. Line movement edges (with time horizon filtering)
     const lineMoveEdges = detectLineMoveEdges(sportsMarkets, sportsData.games);
-    edges.push(...lineMoveEdges);
+    for (const edge of lineMoveEdges) {
+      if (meetsTimeHorizonThreshold(edge.market, edge.edge)) {
+        edges.push(edge);
+      }
+    }
 
     // Update line history for future detection
     updateLineHistory(sportsData.games);
@@ -133,7 +186,7 @@ export default defineDetector({
     // Deduplicate by market (keep highest edge)
     const deduped = deduplicateEdges(edges);
 
-    logger.info(`Sports detector: Found ${deduped.length} edges`);
+    logger.info(`Sports detector: Found ${deduped.length} edges (after time horizon filtering)`);
     return deduped;
   },
 });
@@ -181,8 +234,8 @@ function detectOddsEdge(market: Market, games: SportsGame[]): Edge | null {
     return null;
   }
 
-  // Build reason
-  const reason = buildOddsReason(team, espnProb, marketPrice, direction, game);
+  // Build reason with clear WHY explanation
+  const reason = buildOddsReason(team, espnProb, marketPrice, direction, game, market);
 
   return createEdge(
     market,
@@ -259,7 +312,7 @@ function detectInjuryOverreactionEdges(
       direction,
       overreactionScore,
       confidence,
-      buildInjuryReason(injuredTeam, keyInjuries, overreactionScore),
+      buildInjuryReason(injuredTeam, keyInjuries, overreactionScore, matchingMarket),
       {
         type: 'sports-injury',
         edgeType: 'injury-overreaction',
@@ -337,13 +390,27 @@ function calculateInjuryConfidence(overreactionScore: number, injuries: InjuryRe
 function buildInjuryReason(
   injuredTeam: string,
   injuries: InjuryReport[],
-  overreactionScore: number
+  overreactionScore: number,
+  market?: Market
 ): string {
   const topInjury = injuries[0];
   const pct = (overreactionScore * 100).toFixed(1);
+  const timeLabel = market ? getTimeHorizonLabel(market) : '';
 
-  return `Injury overreaction: ${topInjury.playerName} (${topInjury.status}) for ${injuredTeam}. ` +
-    `Market overreacted by ${pct}%. Fade the panic.`;
+  const parts: string[] = [];
+
+  if (timeLabel) parts.push(timeLabel);
+
+  parts.push(`**INJURY FADE** - Public overreacted to ${topInjury.playerName} (${topInjury.status})`);
+  parts.push(`→ **${pct}% edge** from market panic on ${injuredTeam}`);
+
+  if (injuries.length > 1) {
+    parts.push(`${injuries.length} key injuries affecting line`);
+  }
+
+  parts.push('Strategy: Fade the panic, bet against overreaction');
+
+  return parts.join(' | ');
 }
 
 // =============================================================================
@@ -396,7 +463,7 @@ function detectLineMoveEdges(markets: Market[], games: SportsGame[]): Edge[] {
       direction,
       moveMagnitude,
       confidence,
-      buildLineMoveReason(game, homeMove, timeDiffMinutes, moveType),
+      buildLineMoveReason(game, homeMove, timeDiffMinutes, moveType, matchingMarket),
       {
         type: 'sports-line-move',
         edgeType: moveType,
@@ -448,16 +515,33 @@ function buildLineMoveReason(
   game: SportsGame,
   homeMove: number,
   timeMinutes: number,
-  moveType: string
+  moveType: string,
+  market?: Market
 ): string {
   const direction = homeMove > 0 ? 'toward' : 'away from';
   const team = homeMove > 0 ? game.homeTeam : game.awayTeam;
   const pct = (Math.abs(homeMove) * 100).toFixed(1);
+  const timeLabel = market ? getTimeHorizonLabel(market) : '';
 
-  const typeLabel = moveType === 'steam' ? 'STEAM MOVE' :
-    moveType === 'opening-value' ? 'Opening line value' : 'Line drift';
+  const parts: string[] = [];
 
-  return `${typeLabel}: Line moved ${pct}% ${direction} ${team} in ${Math.round(timeMinutes)} min. Follow sharp money.`;
+  if (timeLabel) parts.push(timeLabel);
+
+  if (moveType === 'steam') {
+    parts.push(`**STEAM MOVE** - Sharp money detected on ${team}`);
+    parts.push(`→ **${pct}% line move** in ${Math.round(timeMinutes)} min`);
+    parts.push('Strategy: Follow the sharp bettors');
+  } else if (moveType === 'opening-value') {
+    parts.push(`**OPENING VALUE** - Line has moved ${pct}% ${direction} ${team}`);
+    parts.push('Strategy: Capture value from opening line');
+  } else {
+    parts.push(`**LINE DRIFT** - Gradual ${pct}% move ${direction} ${team}`);
+    parts.push('Strategy: Monitor for continuation');
+  }
+
+  parts.push(`Matchup: ${game.awayTeam} @ ${game.homeTeam}`);
+
+  return parts.join(' | ');
 }
 
 function updateLineHistory(games: SportsGame[]): void {
@@ -590,17 +674,41 @@ function buildOddsReason(
   espnProb: number,
   marketPrice: number,
   direction: 'YES' | 'NO',
-  game: SportsGame
+  game: SportsGame,
+  market: Market
 ): string {
   const espnPct = (espnProb * 100).toFixed(0);
   const mktPct = (marketPrice * 100).toFixed(0);
-  const spread = game.homeSpread !== undefined ? ` (spread: ${game.homeSpread > 0 ? '+' : ''}${game.homeSpread})` : '';
+  const edgePct = (Math.abs(espnProb - marketPrice) * 100).toFixed(1);
+  const spread = game.homeSpread !== undefined ? `${game.homeSpread > 0 ? '+' : ''}${game.homeSpread}` : null;
+  const timeLabel = getTimeHorizonLabel(market);
 
+  // Build a clear WHY explanation
+  const parts: string[] = [];
+
+  // Time context
+  parts.push(`${timeLabel}`);
+
+  // Main edge signal
   if (direction === 'YES') {
-    return `ESPN odds imply ${espnPct}% for ${team}${spread}, Kalshi at ${mktPct}%. Undervalued.`;
+    parts.push(`**Vegas says ${espnPct}%** for ${team}, Kalshi only pricing at ${mktPct}%`);
+    parts.push(`→ **${edgePct}% edge** (market undervaluing ${team})`);
   } else {
-    return `ESPN odds imply ${espnPct}% for ${team}${spread}, Kalshi at ${mktPct}%. Overvalued.`;
+    parts.push(`**Vegas says ${100 - parseInt(espnPct)}%** against ${team}, Kalshi pricing at ${mktPct}%`);
+    parts.push(`→ **${edgePct}% edge** (market overvaluing ${team})`);
   }
+
+  // Add spread context if available
+  if (spread && game.homeSpread !== undefined) {
+    const favoredTeam = game.homeSpread < 0 ? game.homeTeam : game.awayTeam;
+    const spreadNum = Math.abs(game.homeSpread);
+    parts.push(`Spread: ${favoredTeam} favored by ${spreadNum}`);
+  }
+
+  // Add matchup info
+  parts.push(`Matchup: ${game.awayTeam} @ ${game.homeTeam}`);
+
+  return parts.join(' | ');
 }
 
 function deduplicateEdges(edges: Edge[]): Edge[] {
@@ -614,4 +722,91 @@ function deduplicateEdges(edges: Edge[]): Edge[] {
   }
 
   return Array.from(byMarket.values());
+}
+
+// =============================================================================
+// TIME HORIZON FILTERING
+// =============================================================================
+
+interface TimeHorizonResult {
+  daysToExpiry: number;
+  horizon: 'SAME_DAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'EXTENDED' | 'TOO_FAR';
+  isFutures: boolean;
+  minEdgeRequired: number;
+}
+
+/**
+ * Analyze market time horizon and determine minimum edge required
+ */
+function analyzeTimeHorizon(market: Market): TimeHorizonResult {
+  const titleLower = market.title.toLowerCase();
+
+  // Check if this is a futures/championship market
+  const isFutures = FUTURES_KEYWORDS.some(kw => titleLower.includes(kw));
+
+  // Calculate days to expiry
+  let daysToExpiry = 365; // Default to far future
+  if (market.closeTime) {
+    const expiryDate = new Date(market.closeTime);
+    daysToExpiry = Math.max(0, (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  }
+
+  // Determine horizon and required edge
+  let horizon: TimeHorizonResult['horizon'];
+  let minEdgeRequired: number;
+
+  if (isFutures) {
+    // Futures always require extreme edge regardless of expiry
+    horizon = 'TOO_FAR';
+    minEdgeRequired = EDGE_THRESHOLD_BY_HORIZON.FUTURES;
+  } else if (daysToExpiry <= TIME_HORIZON.SAME_DAY) {
+    horizon = 'SAME_DAY';
+    minEdgeRequired = EDGE_THRESHOLD_BY_HORIZON.SAME_DAY;
+  } else if (daysToExpiry <= TIME_HORIZON.THIS_WEEK) {
+    horizon = 'THIS_WEEK';
+    minEdgeRequired = EDGE_THRESHOLD_BY_HORIZON.THIS_WEEK;
+  } else if (daysToExpiry <= TIME_HORIZON.THIS_MONTH) {
+    horizon = 'THIS_MONTH';
+    minEdgeRequired = EDGE_THRESHOLD_BY_HORIZON.THIS_MONTH;
+  } else if (daysToExpiry <= TIME_HORIZON.EXTENDED) {
+    horizon = 'EXTENDED';
+    minEdgeRequired = EDGE_THRESHOLD_BY_HORIZON.EXTENDED;
+  } else {
+    horizon = 'TOO_FAR';
+    minEdgeRequired = EDGE_THRESHOLD_BY_HORIZON.FUTURES; // Essentially filtered out
+  }
+
+  return { daysToExpiry, horizon, isFutures, minEdgeRequired };
+}
+
+/**
+ * Check if edge meets the time horizon threshold
+ */
+function meetsTimeHorizonThreshold(market: Market, edge: number): boolean {
+  const { minEdgeRequired, isFutures, horizon } = analyzeTimeHorizon(market);
+
+  // Log why we're filtering if edge doesn't meet threshold
+  if (edge < minEdgeRequired) {
+    if (isFutures) {
+      logger.debug(`Filtering futures market "${market.title}" - edge ${(edge*100).toFixed(1)}% < required ${(minEdgeRequired*100).toFixed(0)}%`);
+    } else if (horizon === 'TOO_FAR') {
+      logger.debug(`Filtering far-dated market "${market.title}" - too far out`);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Get urgency label for time horizon
+ */
+function getTimeHorizonLabel(market: Market): string {
+  const { daysToExpiry, horizon, isFutures } = analyzeTimeHorizon(market);
+
+  if (isFutures) return '🏆 FUTURES';
+  if (horizon === 'SAME_DAY') return '🔴 TODAY';
+  if (horizon === 'THIS_WEEK') return `📅 ${Math.ceil(daysToExpiry)}d`;
+  if (horizon === 'THIS_MONTH') return `📆 ${Math.ceil(daysToExpiry)}d`;
+  return `⏳ ${Math.ceil(daysToExpiry)}d`;
 }
