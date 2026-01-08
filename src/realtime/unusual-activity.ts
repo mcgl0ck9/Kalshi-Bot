@@ -87,6 +87,90 @@ export interface UnusualActivityAlert {
     action: string;
   };
   reasoning: string;
+
+  // Insider Score: 0-100 indicating likelihood of informed trading
+  // Based on: low probability bets, unusual size, timing, historical accuracy
+  insiderScore?: number;
+}
+
+// =============================================================================
+// INSIDER SCORE CALCULATION
+// =============================================================================
+
+/**
+ * Factors used to calculate insider score (0-100)
+ * Higher scores indicate higher likelihood of informed/insider trading
+ *
+ * Based on PolyWhaler methodology:
+ * - Low probability bets (betting on <15% or >85% outcomes)
+ * - Unusual trade size relative to market norm
+ * - Suspicious timing (near news events)
+ * - Historical wallet accuracy (if tracked)
+ * - First mover advantage in new markets
+ */
+export interface InsiderScoreFactors {
+  // Is this a bet on a low probability outcome (<15% or >85%)?
+  lowProbabilityBet: boolean;
+
+  // Trade size as multiple of average (e.g., 5x normal = 5.0)
+  sizeMultiple: number;
+
+  // Market age in hours (newer = higher score potential)
+  marketAgeHours: number;
+
+  // Current price of the outcome being bet on (0-1)
+  outcomePrice: number;
+
+  // Optional: Known wallet win rate (0-1)
+  walletWinRate?: number;
+}
+
+/**
+ * Calculate insider score (0-100) based on trade characteristics
+ *
+ * Methodology based on PolyWhaler and academic research:
+ * - Large bets on unlikely outcomes suggest informed trading
+ * - Unusual size relative to normal activity is suspicious
+ * - Early positions in new markets may indicate advance knowledge
+ */
+export function calculateInsiderScore(factors: InsiderScoreFactors): number {
+  let score = 0;
+
+  // Low probability bet: +25 points
+  // Betting big on <15% or >85% outcomes is unusual unless you know something
+  if (factors.lowProbabilityBet) {
+    score += 25;
+  }
+
+  // Unusual size: up to +25 points (5x normal = max)
+  // Larger trades relative to market norm suggest conviction
+  score += Math.min(25, factors.sizeMultiple * 5);
+
+  // New market first mover: up to +15 points
+  // Being early in new markets suggests monitoring advantage
+  if (factors.marketAgeHours < 1) {
+    score += 15;
+  } else if (factors.marketAgeHours < 6) {
+    score += 10;
+  } else if (factors.marketAgeHours < 24) {
+    score += 5;
+  }
+
+  // Extreme price positioning: up to +15 points
+  // Betting on very unlikely outcomes with size is suspicious
+  if (factors.outcomePrice < 0.10 || factors.outcomePrice > 0.90) {
+    score += 15;
+  } else if (factors.outcomePrice < 0.20 || factors.outcomePrice > 0.80) {
+    score += 8;
+  }
+
+  // Historical wallet accuracy: up to +20 points
+  // Whales with proven track records get weighted higher
+  if (factors.walletWinRate !== undefined) {
+    score += factors.walletWinRate * 20;
+  }
+
+  return Math.min(100, Math.round(score));
 }
 
 interface PriceHistory {
@@ -329,6 +413,29 @@ export class UnusualActivityDetector extends EventEmitter {
     if (this.isOnCooldown(alertKey)) return null;
 
     const direction = update.side === 'BUY' ? 'bullish' : 'bearish';
+    const price = parseFloat(update.price);
+
+    // Calculate insider score for this whale trade
+    const avgVolume = this.getAverageVolume(update.asset_id);
+    const sizeMultiple = avgVolume > 0 ? volumeUsd / avgVolume : 2.0;
+    const marketAgeHours = this.getMarketAgeHours(update.asset_id);
+
+    const insiderScore = calculateInsiderScore({
+      lowProbabilityBet: price < 0.15 || price > 0.85,
+      sizeMultiple,
+      marketAgeHours,
+      outcomePrice: update.side === 'BUY' ? price : 1 - price,
+    });
+
+    // Build reasoning with insider score context
+    let reasoning = `Large ${update.side} trade of $${volumeUsd.toLocaleString()} ` +
+      `at ${(price * 100).toFixed(0)}¢`;
+
+    if (insiderScore >= 60) {
+      reasoning += ` | 🔥 HIGH insider score (${insiderScore}/100) - likely informed`;
+    } else if (insiderScore >= 40) {
+      reasoning += ` | ⚠️ MEDIUM insider score (${insiderScore}/100)`;
+    }
 
     const alert: UnusualActivityAlert = {
       type: 'whale_entry',
@@ -340,13 +447,36 @@ export class UnusualActivityDetector extends EventEmitter {
       details: {
         tradeSize: volumeUsd,
       },
-      reasoning: `Large ${update.side} trade of $${volumeUsd.toLocaleString()} ` +
-        `at ${(parseFloat(update.price) * 100).toFixed(0)}¢`,
+      reasoning,
+      insiderScore,
     };
 
     this.recordAlert(alertKey);
     this.emit('alert', alert);
     return alert;
+  }
+
+  /**
+   * Get average trade volume for a market
+   */
+  private getAverageVolume(assetId: string): number {
+    const history = this.volumeHistory.get(assetId);
+    if (!history || history.length === 0) return 0;
+    return history.reduce((sum, h) => sum + h.volume, 0) / history.length;
+  }
+
+  /**
+   * Get market age in hours (placeholder - would need market creation time)
+   */
+  private getMarketAgeHours(assetId: string): number {
+    // For now, estimate based on price history length
+    // In production, this would query market creation timestamp
+    const history = this.priceHistory.get(assetId);
+    if (!history || history.length === 0) return 24; // Default to "not new"
+
+    const firstTimestamp = history[0].timestamp;
+    const hoursAgo = (Date.now() - firstTimestamp) / (1000 * 60 * 60);
+    return Math.max(hoursAgo, 1); // At least 1 hour of observation
   }
 
   private detectVolumeSpike(assetId: string): UnusualActivityAlert | null {
