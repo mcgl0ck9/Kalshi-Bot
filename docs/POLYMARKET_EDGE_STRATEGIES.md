@@ -6,6 +6,64 @@ Based on comprehensive analysis of Polymarket trading strategies, whale behavior
 
 ---
 
+## CORE FRAMEWORK: How Informed Capital Actually Operates
+
+*Source: @xmayeth's "How Informed Capital Actually Operates" framework*
+
+### The 7 Principles
+
+| # | Principle | Key Insight |
+|---|-----------|-------------|
+| 1 | **What people think markets are** | Speed ≠ correctness. Reacting fast to headlines creates illusion of efficiency |
+| 2 | **Why prices stay "wrong"** | Market has info but doesn't know what to DO with it. Edge lives in interpretation window |
+| 3 | **Information arrives unevenly** | Primary signals (filings, actions) lead secondary signals (headlines). Trade primary. |
+| 4 | **Attention & liquidity friction** | High-attention = fast repricing. Low-attention = slow, then sudden catch-up |
+| 5 | **Resolution rules matter** | Markets price how events FEEL, not actual resolution criteria. Read the fine print. |
+| 6 | **Risk asymmetry** | Being correct ≠ being profitable. Reduce exposure as narrative crystallizes. |
+| 7 | **Talking kills edges** | Edges exist because they're uncomfortable/tedious. Public discussion → edge collapse. |
+
+### Implementation: `src/edge/informed-capital.ts`
+
+**Interpretation Uncertainty Detection**
+```typescript
+// High volume + stable price = no consensus = EDGE WINDOW
+const state = detectInterpretationUncertainty(market, volume, avgVolume, priceChange, hasNews);
+if (isInEdgeWindow(state)) {
+  // Act before narrative crystallizes
+}
+```
+
+**Correlated Market Lag**
+```typescript
+// Primary market moved → related markets haven't yet → EDGE
+const lag = detectCorrelatedLag(primaryMarket, relatedMarkets, primaryChange, relatedChanges);
+if (lag?.relatedLagging) {
+  // Related markets WILL catch up
+}
+```
+
+**Resolution Rules Analysis**
+```typescript
+// Market prices narrative, not actual resolution criteria → EDGE
+const analysis = analyzeResolutionRules(market, description);
+if (analysis.edgeFromMisunderstanding > 0.03) {
+  // Tedious analysis pays off
+}
+```
+
+**Attention-Based Edge Decay**
+```typescript
+// Low attention = longer-lived edge
+const metrics = estimateEdgeDecay(market, socialMentions, newsArticles, volume);
+if (isLowAttentionMarket(metrics)) {
+  // Edge may persist for days, not hours
+}
+```
+
+---
+
+---
+
 ## 1. INSIDER SCORE DETECTION (Priority: HIGH)
 
 ### Source: [PolyWhaler Methodology](https://www.polywhaler.com/)
