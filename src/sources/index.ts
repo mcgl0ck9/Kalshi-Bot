@@ -26,6 +26,7 @@ import injuriesSource from './injuries.js';
 import kalshiMentionsSource from './kalshi-mentions.js';
 import earningsTranscriptsSource from './earnings-transcripts.js';
 import executiveMediaSource from './executive-media.js';
+import corporateEventsSource from './corporate-events.js';
 // P3 sources (health surveillance, whale tracking)
 import cdcSurveillanceSource from './cdc-surveillance.js';
 import whaleDiscoverySource from './whale-discovery.js';
@@ -55,6 +56,7 @@ export function registerAllSources(): void {
   registerSource(kalshiMentionsSource);
   registerSource(earningsTranscriptsSource);
   registerSource(executiveMediaSource);
+  registerSource(corporateEventsSource);
   // P3 sources (health surveillance, whale tracking)
   registerSource(cdcSurveillanceSource);
   registerSource(whaleDiscoverySource);
@@ -81,6 +83,7 @@ export {
   kalshiMentionsSource,
   earningsTranscriptsSource,
   executiveMediaSource,
+  corporateEventsSource,
   // P3 sources (health surveillance, whale tracking)
   cdcSurveillanceSource,
   whaleDiscoverySource,

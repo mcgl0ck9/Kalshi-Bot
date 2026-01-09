@@ -490,3 +490,351 @@ export function getRecentExecutiveAppearances(
     return publishedDate >= cutoff;
   });
 }
+
+// =============================================================================
+// PRE-EARNINGS SIGNAL DETECTION
+// =============================================================================
+
+/**
+ * Appearance type classification for pre-earnings signal detection.
+ * C-suite appearances before earnings often preview discussion topics.
+ */
+export type AppearanceType =
+  | 'earnings_call'
+  | 'investor_conference'
+  | 'tv_interview'
+  | 'podcast'
+  | 'product_launch'
+  | 'analyst_day'
+  | 'shareholder_meeting'
+  | 'other';
+
+/**
+ * Pre-earnings signal from executive media appearance.
+ */
+export interface PreEarningsSignal {
+  ticker: string;
+  appearance: MediaAppearance;
+  appearanceType: AppearanceType;
+  daysToEarnings: number;
+  topicsDiscussed: string[];
+  signalStrength: number;  // 0-1, higher = more predictive
+  reasoning: string;
+}
+
+/**
+ * Company earnings schedule (approximate).
+ * Used to determine if an appearance is "pre-earnings".
+ */
+export interface EarningsSchedule {
+  ticker: string;
+  nextEarningsDate?: string;
+  quarter?: string;
+}
+
+/**
+ * Detect pre-earnings signals from executive media appearances.
+ *
+ * The insight: C-suite executives appearing on TV/conferences within 30 days
+ * of earnings often preview topics that will be discussed on the call.
+ * This gives us a forward-looking signal for mentions markets.
+ *
+ * @param data - Executive media data
+ * @param ticker - Company ticker
+ * @param earningsDate - Expected earnings call date
+ * @returns Pre-earnings signals with topic predictions
+ */
+export function detectPreEarningsSignals(
+  data: ExecutiveMediaData,
+  ticker: string,
+  earningsDate: string
+): PreEarningsSignal[] {
+  const signals: PreEarningsSignal[] = [];
+  const earningsTime = new Date(earningsDate).getTime();
+  const now = Date.now();
+
+  // Only look at upcoming earnings (not past)
+  if (earningsTime < now) {
+    return signals;
+  }
+
+  const companyAppearances = data.byCompany[ticker] || [];
+
+  for (const appearance of companyAppearances) {
+    const appearanceTime = new Date(appearance.publishedAt).getTime();
+
+    // Only consider appearances BEFORE earnings
+    if (appearanceTime >= earningsTime) continue;
+
+    const daysToEarnings = (earningsTime - appearanceTime) / (1000 * 60 * 60 * 24);
+
+    // Pre-earnings window: 1-45 days before
+    if (daysToEarnings < 1 || daysToEarnings > 45) continue;
+
+    const appearanceType = classifyAppearanceType(appearance);
+    const topics = extractTopicsFromAppearance(appearance);
+    const signalStrength = calculatePreEarningsSignalStrength(
+      appearanceType,
+      daysToEarnings,
+      topics.length
+    );
+
+    if (signalStrength > 0.3 && topics.length > 0) {
+      signals.push({
+        ticker,
+        appearance,
+        appearanceType,
+        daysToEarnings: Math.round(daysToEarnings),
+        topicsDiscussed: topics,
+        signalStrength,
+        reasoning: buildPreEarningsReasoning(appearanceType, daysToEarnings, topics),
+      });
+    }
+  }
+
+  // Sort by signal strength (most predictive first)
+  return signals.sort((a, b) => b.signalStrength - a.signalStrength);
+}
+
+/**
+ * Classify the type of media appearance.
+ */
+function classifyAppearanceType(appearance: MediaAppearance): AppearanceType {
+  const titleLower = appearance.title.toLowerCase();
+  const descLower = appearance.description.toLowerCase();
+  const combined = `${titleLower} ${descLower}`;
+
+  // Earnings call (historical reference)
+  if (combined.includes('earnings call') || combined.includes('earnings conference')) {
+    return 'earnings_call';
+  }
+
+  // Investor conference
+  if (combined.includes('investor conference') ||
+      combined.includes('investor day') ||
+      combined.includes('morgan stanley') ||
+      combined.includes('goldman sachs') ||
+      combined.includes('jpmorgan') ||
+      combined.includes('barclays') ||
+      combined.includes('ubs conference') ||
+      combined.includes('bank of america') ||
+      combined.includes('bernstein') ||
+      combined.includes('tech conference') ||
+      combined.includes('financial conference')) {
+    return 'investor_conference';
+  }
+
+  // Analyst day
+  if (combined.includes('analyst day') || combined.includes('capital markets day')) {
+    return 'analyst_day';
+  }
+
+  // TV interview
+  if (appearance.channel.includes('CNBC') ||
+      appearance.channel.includes('Bloomberg') ||
+      appearance.channel.includes('Fox Business') ||
+      combined.includes('interview') ||
+      combined.includes('exclusive') ||
+      combined.includes('speaks')) {
+    return 'tv_interview';
+  }
+
+  // Podcast
+  if (combined.includes('podcast') || combined.includes('episode')) {
+    return 'podcast';
+  }
+
+  // Product launch
+  if (combined.includes('launch') || combined.includes('announcement') || combined.includes('keynote')) {
+    return 'product_launch';
+  }
+
+  // Shareholder meeting
+  if (combined.includes('shareholder') || combined.includes('annual meeting')) {
+    return 'shareholder_meeting';
+  }
+
+  return 'other';
+}
+
+/**
+ * Extract topics discussed from appearance title and description.
+ */
+function extractTopicsFromAppearance(appearance: MediaAppearance): string[] {
+  const topics: string[] = [];
+  const combined = `${appearance.title} ${appearance.description}`.toLowerCase();
+
+  // Topic categories with keywords
+  const topicPatterns: Record<string, string[]> = {
+    'AI': ['ai', 'artificial intelligence', 'machine learning', 'gpt', 'llm', 'generative'],
+    'tariffs': ['tariff', 'trade war', 'import duty', 'china trade'],
+    'inflation': ['inflation', 'price', 'pricing power', 'cost pressure'],
+    'recession': ['recession', 'downturn', 'slowdown', 'economic'],
+    'layoffs': ['layoff', 'job cut', 'restructuring', 'workforce'],
+    'guidance': ['guidance', 'outlook', 'forecast', 'expect'],
+    'growth': ['growth', 'expansion', 'market share'],
+    'dividends': ['dividend', 'buyback', 'shareholder return'],
+    'regulation': ['regulation', 'regulatory', 'antitrust', 'ftc', 'doj'],
+    'china': ['china', 'chinese market', 'asia'],
+    'supply chain': ['supply chain', 'logistics', 'inventory'],
+    'margins': ['margin', 'profitability', 'gross margin'],
+    'capex': ['capex', 'capital expenditure', 'investment'],
+    'M&A': ['acquisition', 'merger', 'deal', 'buy'],
+    'cloud': ['cloud', 'aws', 'azure', 'gcp'],
+    'EV': ['ev', 'electric vehicle', 'battery'],
+    'streaming': ['streaming', 'subscriber', 'content'],
+  };
+
+  for (const [topic, patterns] of Object.entries(topicPatterns)) {
+    if (patterns.some(p => combined.includes(p))) {
+      topics.push(topic);
+    }
+  }
+
+  // Also include keywords already extracted
+  for (const keyword of appearance.mentionedKeywords) {
+    const normalized = keyword.toLowerCase();
+    if (!topics.some(t => t.toLowerCase() === normalized)) {
+      topics.push(keyword);
+    }
+  }
+
+  return topics;
+}
+
+/**
+ * Calculate signal strength based on appearance characteristics.
+ *
+ * Higher signal strength = more predictive of earnings call content.
+ */
+function calculatePreEarningsSignalStrength(
+  appearanceType: AppearanceType,
+  daysToEarnings: number,
+  topicsCount: number
+): number {
+  let strength = 0.3;  // Base
+
+  // Appearance type weighting
+  // Investor conferences are highly predictive - executives preview strategy
+  const typeWeights: Record<AppearanceType, number> = {
+    'investor_conference': 0.35,
+    'analyst_day': 0.35,
+    'tv_interview': 0.25,
+    'podcast': 0.15,
+    'shareholder_meeting': 0.20,
+    'product_launch': 0.10,
+    'earnings_call': 0.0,  // Historical, not predictive
+    'other': 0.05,
+  };
+  strength += typeWeights[appearanceType] || 0;
+
+  // Proximity weighting - closer to earnings = more relevant
+  // Sweet spot is 7-21 days before (enough time to trade, recent enough to be relevant)
+  if (daysToEarnings >= 7 && daysToEarnings <= 21) {
+    strength += 0.20;  // Optimal window
+  } else if (daysToEarnings >= 3 && daysToEarnings < 7) {
+    strength += 0.25;  // Very close - high urgency
+  } else if (daysToEarnings > 21 && daysToEarnings <= 35) {
+    strength += 0.10;  // Moderate relevance
+  }
+  // Beyond 35 days: base strength only
+
+  // Topic diversity - more topics = richer signal
+  strength += Math.min(0.15, topicsCount * 0.03);
+
+  return Math.min(1.0, strength);
+}
+
+/**
+ * Build reasoning explanation for pre-earnings signal.
+ */
+function buildPreEarningsReasoning(
+  appearanceType: AppearanceType,
+  daysToEarnings: number,
+  topics: string[]
+): string {
+  const typeDescriptions: Record<AppearanceType, string> = {
+    'investor_conference': 'Investor conference appearances often preview strategic themes',
+    'analyst_day': 'Analyst days typically discuss topics that will be emphasized in earnings',
+    'tv_interview': 'TV interviews before earnings often hint at discussion topics',
+    'podcast': 'Podcast appearances can reveal executive thinking',
+    'shareholder_meeting': 'Shareholder meetings preview company messaging',
+    'product_launch': 'Product launches may be referenced in earnings',
+    'earnings_call': 'Historical earnings call',
+    'other': 'Media appearance',
+  };
+
+  const topicList = topics.slice(0, 3).join(', ');
+  const moreTopics = topics.length > 3 ? ` (+${topics.length - 3} more)` : '';
+
+  return `${typeDescriptions[appearanceType]}. ` +
+    `${Math.round(daysToEarnings)} days before earnings. ` +
+    `Topics: ${topicList}${moreTopics}`;
+}
+
+/**
+ * Get aggregated topic predictions from all pre-earnings signals.
+ *
+ * Combines signals to produce a weighted probability boost for each topic.
+ */
+export function aggregatePreEarningsTopics(
+  signals: PreEarningsSignal[]
+): Array<{ topic: string; confidenceBoost: number; appearances: number }> {
+  const topicScores = new Map<string, { totalStrength: number; count: number }>();
+
+  for (const signal of signals) {
+    for (const topic of signal.topicsDiscussed) {
+      const existing = topicScores.get(topic) || { totalStrength: 0, count: 0 };
+      existing.totalStrength += signal.signalStrength;
+      existing.count += 1;
+      topicScores.set(topic, existing);
+    }
+  }
+
+  return Array.from(topicScores.entries())
+    .map(([topic, scores]) => ({
+      topic,
+      confidenceBoost: Math.min(0.25, scores.totalStrength / signals.length * 0.3),
+      appearances: scores.count,
+    }))
+    .sort((a, b) => b.confidenceBoost - a.confidenceBoost);
+}
+
+/**
+ * Check if a keyword is "warmed up" by pre-earnings executive appearances.
+ *
+ * A warmed-up keyword has higher probability of being mentioned in earnings
+ * because the executive already discussed it publicly.
+ */
+export function isKeywordWarmedUp(
+  data: ExecutiveMediaData,
+  ticker: string,
+  keyword: string,
+  earningsDate: string
+): { warmedUp: boolean; confidenceBoost: number; reasoning?: string } {
+  const signals = detectPreEarningsSignals(data, ticker, earningsDate);
+
+  const keywordLower = keyword.toLowerCase();
+  const matchingSignals = signals.filter(s =>
+    s.topicsDiscussed.some(t => t.toLowerCase().includes(keywordLower) ||
+                                keywordLower.includes(t.toLowerCase()))
+  );
+
+  if (matchingSignals.length === 0) {
+    return { warmedUp: false, confidenceBoost: 0 };
+  }
+
+  // Calculate confidence boost from matching appearances
+  const totalStrength = matchingSignals.reduce((sum, s) => sum + s.signalStrength, 0);
+  const confidenceBoost = Math.min(0.20, totalStrength * 0.15);
+
+  const recentAppearance = matchingSignals[0];
+  const reasoning = `Executive discussed "${keyword}" ${recentAppearance.daysToEarnings}d before earnings ` +
+    `in ${recentAppearance.appearanceType.replace('_', ' ')}`;
+
+  return {
+    warmedUp: true,
+    confidenceBoost,
+    reasoning,
+  };
+}

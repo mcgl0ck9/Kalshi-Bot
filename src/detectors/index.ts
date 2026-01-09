@@ -25,6 +25,7 @@ import sentimentDetector from './sentiment.js';
 import timeDecayDetector from './time-decay.js';
 import weatherDetector from './weather.js';
 import whaleDetector from './whale.js';
+import agentDetector from '../agents/agent-detector.js';
 
 /**
  * Register all edge detectors.
@@ -50,6 +51,7 @@ export function registerAllDetectors(): void {
   registerDetector(timeDecayDetector);
   registerDetector(weatherDetector);
   registerDetector(whaleDetector);
+  registerDetector(agentDetector);
 
   logger.info('Edge detectors registered');
 }

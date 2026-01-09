@@ -421,3 +421,316 @@ export function getAnalystInterest(
 
   return totalQuestions > 0 ? questionMentions / totalQuestions : 0;
 }
+
+// =============================================================================
+// SMART DECAY (TIME-WEIGHTED ANALYSIS)
+// =============================================================================
+
+/**
+ * Configuration for time-weighted keyword analysis.
+ * Uses exponential decay to de-weight old transcripts.
+ */
+export interface DecayConfig {
+  /** Half-life in days (default: 270 = 9 months / 3 quarters) */
+  halfLifeDays: number;
+
+  /** Minimum weight for any transcript (default: 0.05) */
+  floorWeight: number;
+
+  /** Boost multiplier for most recent quarter (default: 1.5) */
+  recencyBoost: number;
+}
+
+export const DEFAULT_DECAY_CONFIG: DecayConfig = {
+  halfLifeDays: 270,    // 9 months - typical 3 quarters of lookback
+  floorWeight: 0.05,    // Even old transcripts get 5% weight
+  recencyBoost: 1.5,    // Most recent quarter is 1.5x weighted
+};
+
+/**
+ * Calculate the time-based weight for a transcript.
+ * Uses exponential decay: weight = 0.5^(age_days / half_life)
+ *
+ * @param transcriptDate - Date of the transcript
+ * @param config - Decay configuration
+ * @returns Weight between floorWeight and recencyBoost
+ */
+export function calculateTranscriptWeight(
+  transcriptDate: string | Date,
+  config: DecayConfig = DEFAULT_DECAY_CONFIG
+): number {
+  const date = new Date(transcriptDate);
+  const now = new Date();
+  const ageDays = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+
+  // Exponential decay
+  let weight = Math.pow(0.5, ageDays / config.halfLifeDays);
+
+  // Apply floor
+  weight = Math.max(config.floorWeight, weight);
+
+  // Boost most recent quarter (within 100 days)
+  if (ageDays <= 100) {
+    weight = Math.min(config.recencyBoost, weight * config.recencyBoost);
+  }
+
+  return weight;
+}
+
+/**
+ * Time-weighted mention rate for a keyword.
+ * More recent transcripts have higher influence on the rate.
+ *
+ * This solves the "stale keyword" problem:
+ * - Kroger/Albertsons merger keywords from 2024 get low weight
+ * - Recent quarters dominate the probability estimate
+ */
+export function calculateTimeWeightedMentionRate(
+  transcripts: EarningsTranscript[],
+  keyword: string,
+  config: DecayConfig = DEFAULT_DECAY_CONFIG
+): {
+  rate: number;
+  weightedMentions: number;
+  totalWeight: number;
+  effectiveN: number;
+  byQuarter: Record<string, { mentioned: boolean; weight: number }>;
+} {
+  if (transcripts.length === 0) {
+    return {
+      rate: 0.5,  // Prior with no data
+      weightedMentions: 0,
+      totalWeight: 0,
+      effectiveN: 0,
+      byQuarter: {},
+    };
+  }
+
+  let weightedMentions = 0;
+  let totalWeight = 0;
+  const byQuarter: Record<string, { mentioned: boolean; weight: number }> = {};
+
+  for (const transcript of transcripts) {
+    const weight = calculateTranscriptWeight(transcript.date, config);
+    const mentioned = containsKeyword(transcript, keyword);
+
+    byQuarter[transcript.quarter] = { mentioned, weight };
+    totalWeight += weight;
+
+    if (mentioned) {
+      weightedMentions += weight;
+    }
+  }
+
+  // Effective sample size (accounts for decay - reduced from nominal N)
+  const effectiveN = totalWeight / Math.max(...Object.values(byQuarter).map(q => q.weight));
+
+  return {
+    rate: totalWeight > 0 ? weightedMentions / totalWeight : 0.5,
+    weightedMentions,
+    totalWeight,
+    effectiveN,
+    byQuarter,
+  };
+}
+
+/**
+ * Time-weighted analyst interest score.
+ * Recent analyst questions count more than old ones.
+ */
+export function getTimeWeightedAnalystInterest(
+  transcripts: EarningsTranscript[],
+  keyword: string,
+  config: DecayConfig = DEFAULT_DECAY_CONFIG
+): {
+  score: number;
+  weightedMentions: number;
+  totalWeight: number;
+  trend: 'increasing' | 'stable' | 'decreasing';
+} {
+  let weightedMentions = 0;
+  let totalWeight = 0;
+  let recentMentions = 0;
+  let recentWeight = 0;
+  let olderMentions = 0;
+  let olderWeight = 0;
+
+  const variants = getKeywordVariants(keyword);
+  const cutoffDays = 180; // 6 months for trend calculation
+
+  for (const transcript of transcripts) {
+    const weight = calculateTranscriptWeight(transcript.date, config);
+    const ageDays = (new Date().getTime() - new Date(transcript.date).getTime()) / (1000 * 60 * 60 * 24);
+
+    for (const question of transcript.analystQuestions) {
+      totalWeight += weight;
+      const qLower = question.toLowerCase();
+
+      if (variants.some(v => qLower.includes(v.toLowerCase()))) {
+        weightedMentions += weight;
+
+        if (ageDays <= cutoffDays) {
+          recentMentions += weight;
+          recentWeight += weight;
+        } else {
+          olderMentions += weight;
+          olderWeight += weight;
+        }
+      } else {
+        if (ageDays <= cutoffDays) {
+          recentWeight += weight;
+        } else {
+          olderWeight += weight;
+        }
+      }
+    }
+  }
+
+  // Calculate trend from recent vs older weighted rates
+  const recentRate = recentWeight > 0 ? recentMentions / recentWeight : 0;
+  const olderRate = olderWeight > 0 ? olderMentions / olderWeight : 0;
+
+  let trend: 'increasing' | 'stable' | 'decreasing' = 'stable';
+  if (recentRate > olderRate + 0.15) trend = 'increasing';
+  if (recentRate < olderRate - 0.15) trend = 'decreasing';
+
+  return {
+    score: totalWeight > 0 ? weightedMentions / totalWeight : 0,
+    weightedMentions,
+    totalWeight,
+    trend,
+  };
+}
+
+/**
+ * Extract "hot topics" from analyst Q&A.
+ * A topic is "hot" if analysts asked about it multiple times.
+ *
+ * Used for cross-company inference: if analysts grilled Kroger about
+ * "delivery" 5 times, it's likely they'll ask Albertsons too.
+ */
+export function extractHotTopics(
+  transcript: EarningsTranscript,
+  minMentions: number = 2
+): Array<{ topic: string; mentions: number; intensity: number }> {
+  const topicCounts = new Map<string, number>();
+  const trackedTopics = [
+    'delivery', 'online', 'e-commerce',
+    'inflation', 'pricing', 'margin',
+    'AI', 'artificial intelligence',
+    'tariff', 'china', 'supply chain',
+    'layoff', 'restructuring', 'headcount',
+    'shrinkage', 'theft', 'loss',
+    'guidance', 'outlook', 'forecast',
+    'recession', 'slowdown', 'downturn',
+    'dividend', 'buyback', 'capital return',
+    'regulation', 'antitrust', 'FTC',
+    'GLP-1', 'Ozempic', 'weight loss',
+    'EV', 'electric', 'autonomous',
+  ];
+
+  for (const question of transcript.analystQuestions) {
+    const qLower = question.toLowerCase();
+
+    for (const topic of trackedTopics) {
+      if (qLower.includes(topic.toLowerCase())) {
+        topicCounts.set(topic, (topicCounts.get(topic) || 0) + 1);
+      }
+    }
+  }
+
+  const totalQuestions = transcript.analystQuestions.length || 1;
+
+  return Array.from(topicCounts.entries())
+    .filter(([_, count]) => count >= minMentions)
+    .map(([topic, mentions]) => ({
+      topic,
+      mentions,
+      intensity: mentions / totalQuestions,
+    }))
+    .sort((a, b) => b.mentions - a.mentions);
+}
+
+/**
+ * Check if a keyword is "stale" - mentioned historically but likely
+ * no longer relevant due to corporate events.
+ *
+ * Examples of stale keywords:
+ * - "Kroger" for Albertsons after merger failure
+ * - "Earnings" for EA if going private
+ */
+export interface StaleKeywordCheck {
+  isStale: boolean;
+  reason?: string;
+  lastMentionDate?: string;
+  daysSinceLastMention?: number;
+  suggestedReplacement?: string;
+}
+
+export function checkKeywordStaleness(
+  transcripts: EarningsTranscript[],
+  keyword: string,
+  staleDays: number = 365
+): StaleKeywordCheck {
+  if (transcripts.length === 0) {
+    return { isStale: false };
+  }
+
+  // Sort by date descending
+  const sorted = [...transcripts].sort((a, b) =>
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  // Find most recent mention
+  let lastMentionDate: string | undefined;
+  for (const transcript of sorted) {
+    if (containsKeyword(transcript, keyword)) {
+      lastMentionDate = transcript.date;
+      break;
+    }
+  }
+
+  if (!lastMentionDate) {
+    return {
+      isStale: true,
+      reason: 'Never mentioned in available transcripts',
+    };
+  }
+
+  const daysSince = (new Date().getTime() - new Date(lastMentionDate).getTime()) / (1000 * 60 * 60 * 24);
+
+  // Check if recently mentioned
+  if (daysSince <= staleDays / 2) {
+    return {
+      isStale: false,
+      lastMentionDate,
+      daysSinceLastMention: Math.round(daysSince),
+    };
+  }
+
+  // Check trend - if decreasing and old, likely stale
+  const trend = analyzeKeywordTrend(sorted, keyword);
+  if (trend === 'decreasing' && daysSince > staleDays * 0.75) {
+    return {
+      isStale: true,
+      reason: `Decreasing trend, last mentioned ${Math.round(daysSince)} days ago`,
+      lastMentionDate,
+      daysSinceLastMention: Math.round(daysSince),
+    };
+  }
+
+  if (daysSince > staleDays) {
+    return {
+      isStale: true,
+      reason: `Not mentioned in ${Math.round(daysSince)} days`,
+      lastMentionDate,
+      daysSinceLastMention: Math.round(daysSince),
+    };
+  }
+
+  return {
+    isStale: false,
+    lastMentionDate,
+    daysSinceLastMention: Math.round(daysSince),
+  };
+}
