@@ -79,7 +79,15 @@ export default defineSource<SportsData>({
 
 async function fetchSportGames(sportKey: keyof typeof ESPN_SPORTS): Promise<SportsGame[]> {
   const { sport, league } = ESPN_SPORTS[sportKey];
-  const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`;
+
+  // NCAAM needs date params + group=50 (D1) + higher limit for full coverage
+  let url: string;
+  if (sportKey === 'ncaam') {
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?dates=${today}&groups=50&limit=200`;
+  } else {
+    url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard`;
+  }
 
   try {
     const response = await fetch(url, {
@@ -190,10 +198,51 @@ export function oddsToProb(americanOdds: number): number {
 }
 
 /**
- * Convert spread to implied win probability.
- * Each point ≈ 3% win probability.
+ * Convert spread to implied win probability using normal CDF.
+ *
+ * The expected scoring margin = -spread (negative spread = favored).
+ * Standard deviations by sport (empirical):
+ *   NFL: σ = 13.5
+ *   NBA: σ = 12.0
+ *   NCAAM (college basketball): σ = 11.0
+ *   NHL: σ = 1.6 (goals)
+ *
+ * P(home wins) = Φ(-spread / σ) where Φ is the standard normal CDF.
  */
-export function spreadToWinProb(spread: number): number {
-  const prob = 0.5 - (spread * 0.03);
+export function spreadToWinProb(spread: number, sport?: string): number {
+  // Sport-specific scoring margin standard deviations
+  const stdDevBySport: Record<string, number> = {
+    nfl: 13.5,
+    nba: 12.0,
+    ncaam: 11.0,
+    nhl: 1.6,
+    mlb: 1.4,
+  };
+
+  const stdDev = stdDevBySport[sport ?? 'nfl'] ?? 13.0;
+
+  // P(home wins) = P(margin > 0) = Φ(-spread / σ)
+  const z = -spread / stdDev;
+  const prob = normalCDF(z);
   return Math.max(0.05, Math.min(0.95, prob));
+}
+
+/**
+ * Approximate the standard normal CDF using Abramowitz & Stegun formula.
+ */
+function normalCDF(x: number): number {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+
+  const sign = x < 0 ? -1 : 1;
+  const absX = Math.abs(x) / Math.sqrt(2);
+
+  const t = 1.0 / (1.0 + p * absX);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
+
+  return 0.5 * (1.0 + sign * y);
 }

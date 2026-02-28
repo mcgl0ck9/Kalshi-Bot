@@ -40,40 +40,122 @@ import {
 // CONFIGURATION
 // =============================================================================
 
-const MIN_EDGE = 0.05;           // Require 5% edge for sports
+// League-aware minimum edge thresholds
+// NCAAM is less efficient (lower liquidity), NBA moderate, NFL efficient
+const MIN_EDGE_BY_LEAGUE: Record<string, number> = {
+  ncaam: 0.03,     // 3% - less efficient markets
+  nba: 0.04,       // 4% - moderately efficient
+  nfl: 0.05,       // 5% - most efficient
+  mlb: 0.05,
+  nhl: 0.05,
+};
+const DEFAULT_MIN_EDGE = 0.05;
+
 const MIN_CONFIDENCE = 0.55;
 const INJURY_OVERREACTION_THRESHOLD = 0.03;  // 3% overreaction
 const LINE_MOVE_THRESHOLD = 0.03;            // 3% move significant
 
-// Team name normalization for matching
+// Team name normalization for matching across all leagues
 const TEAM_ALIASES: Record<string, string[]> = {
-  // NFL
+  // ==========================================================================
+  // NFL (32 teams)
+  // ==========================================================================
   'chiefs': ['kansas city chiefs', 'kc chiefs', 'kansas city'],
-  'eagles': ['philadelphia eagles', 'philly eagles', 'philadelphia'],
+  'eagles': ['philadelphia eagles', 'philly eagles'],
   '49ers': ['san francisco 49ers', 'sf 49ers', 'san francisco', 'niners'],
   'bills': ['buffalo bills', 'buffalo'],
   'ravens': ['baltimore ravens', 'baltimore'],
-  'lions': ['detroit lions', 'detroit'],
+  'lions': ['detroit lions'],
   'cowboys': ['dallas cowboys', 'dallas'],
   'packers': ['green bay packers', 'green bay'],
-  // NBA
+  'bengals': ['cincinnati bengals'],
+  'dolphins': ['miami dolphins'],
+  'steelers': ['pittsburgh steelers', 'pittsburgh'],
+  'chargers': ['los angeles chargers', 'la chargers'],
+  'broncos': ['denver broncos', 'denver'],
+  'colts': ['indianapolis colts', 'indianapolis'],
+  'texans': ['houston texans'],
+  'jaguars': ['jacksonville jaguars', 'jacksonville'],
+  'titans': ['tennessee titans'],
+  'raiders': ['las vegas raiders', 'las vegas'],
+  'patriots': ['new england patriots', 'new england'],
+  'jets': ['new york jets', 'ny jets'],
+  'giants': ['new york giants', 'ny giants'],
+  'commanders': ['washington commanders', 'washington'],
+  'bears': ['chicago bears', 'chicago'],
+  'vikings': ['minnesota vikings', 'minnesota'],
+  'saints': ['new orleans saints', 'new orleans'],
+  'falcons': ['atlanta falcons', 'atlanta'],
+  'buccaneers': ['tampa bay buccaneers', 'tampa bay', 'bucs'],
+  'panthers': ['carolina panthers', 'carolina'],
+  'seahawks': ['seattle seahawks', 'seattle'],
+  'rams': ['los angeles rams', 'la rams'],
+  'cardinals az': ['arizona cardinals'],
+  'browns': ['cleveland browns', 'cleveland'],
+
+  // ==========================================================================
+  // NBA (30 teams)
+  // ==========================================================================
   'lakers': ['los angeles lakers', 'la lakers'],
-  'celtics': ['boston celtics', 'boston'],
+  'celtics': ['boston celtics'],
   'warriors': ['golden state warriors', 'golden state', 'gsw'],
-  // MLB
+  'bucks': ['milwaukee bucks', 'milwaukee'],
+  'nuggets': ['denver nuggets'],
+  'sixers': ['philadelphia 76ers', 'philly 76ers', '76ers'],
+  'suns': ['phoenix suns', 'phoenix'],
+  'cavaliers': ['cleveland cavaliers', 'cavs'],
+  'thunder': ['oklahoma city thunder', 'okc thunder', 'okc'],
+  'knicks': ['new york knicks', 'ny knicks'],
+  'heat': ['miami heat'],
+  'clippers': ['los angeles clippers', 'la clippers'],
+  'mavericks': ['dallas mavericks', 'mavs'],
+  'timberwolves': ['minnesota timberwolves', 'wolves'],
+  'grizzlies': ['memphis grizzlies', 'memphis'],
+  'pelicans': ['new orleans pelicans'],
+  'kings': ['sacramento kings', 'sacramento'],
+  'hawks': ['atlanta hawks'],
+  'raptors': ['toronto raptors', 'toronto'],
+  'nets': ['brooklyn nets', 'brooklyn'],
+  'pacers': ['indiana pacers', 'indiana'],
+  'magic': ['orlando magic', 'orlando'],
+  'bulls': ['chicago bulls'],
+  'hornets': ['charlotte hornets', 'charlotte'],
+  'wizards': ['washington wizards'],
+  'pistons': ['detroit pistons'],
+  'rockets': ['houston rockets'],
+  'spurs': ['san antonio spurs', 'san antonio'],
+  'jazz': ['utah jazz', 'utah'],
+  'trail blazers': ['portland trail blazers', 'portland', 'blazers'],
+
+  // ==========================================================================
+  // MLB (selected)
+  // ==========================================================================
   'yankees': ['new york yankees', 'ny yankees'],
   'dodgers': ['los angeles dodgers', 'la dodgers'],
-  // NCAAM - Top programs and tournament contenders
+  'astros': ['houston astros'],
+  'braves': ['atlanta braves'],
+  'phillies': ['philadelphia phillies'],
+  'padres': ['san diego padres', 'san diego'],
+  'mets': ['new york mets', 'ny mets'],
+  'red sox': ['boston red sox'],
+  'cubs': ['chicago cubs'],
+
+  // ==========================================================================
+  // NCAAM - Conference tournament & March Madness contenders (80+ teams)
+  // ==========================================================================
+  // Top 25 + bubble teams + conference tournament regulars
   'duke': ['duke blue devils', 'duke university'],
   'tar heels': ['north carolina tar heels', 'unc', 'north carolina'],
-  'wildcats': ['kentucky wildcats', 'kentucky', 'uk wildcats', 'arizona wildcats', 'kansas state wildcats'],
+  'wildcats uk': ['kentucky wildcats', 'kentucky', 'uk wildcats'],
+  'wildcats az': ['arizona wildcats'],
+  'wildcats ksu': ['kansas state wildcats', 'k-state'],
   'jayhawks': ['kansas jayhawks', 'kansas'],
-  'bulldogs': ['gonzaga bulldogs', 'gonzaga'],
-  'huskies': ['uconn huskies', 'connecticut huskies', 'uconn', 'connecticut'],
+  'bulldogs gonzaga': ['gonzaga bulldogs', 'gonzaga'],
+  'huskies uconn': ['uconn huskies', 'connecticut huskies', 'uconn', 'connecticut'],
   'auburn': ['auburn tigers'],
   'purdue': ['purdue boilermakers'],
-  'houston': ['houston cougars'],
-  'tennessee': ['tennessee volunteers', 'vols'],
+  'houston cougars': ['houston cougars'],
+  'tennessee vols': ['tennessee volunteers', 'vols'],
   'florida': ['florida gators', 'gators'],
   'iowa state': ['iowa state cyclones', 'cyclones'],
   'marquette': ['marquette golden eagles'],
@@ -85,6 +167,65 @@ const TEAM_ALIASES: Record<string, string[]> = {
   'wisconsin': ['wisconsin badgers', 'badgers'],
   'michigan': ['michigan wolverines', 'wolverines'],
   'oregon': ['oregon ducks', 'ducks'],
+  'clemson': ['clemson tigers'],
+  'pitt': ['pittsburgh panthers', 'pitt panthers'],
+  'maryland': ['maryland terrapins', 'terps'],
+  'ohio state': ['ohio state buckeyes', 'buckeyes'],
+  'illinois': ['illinois fighting illini', 'illini'],
+  'xavier': ['xavier musketeers'],
+  'memphis': ['memphis tigers'],
+  'baylor': ['baylor bears'],
+  'arkansas': ['arkansas razorbacks', 'razorbacks'],
+  'villanova': ['villanova wildcats'],
+  'virginia': ['virginia cavaliers', 'uva'],
+  'arizona': ['arizona wildcats'],
+  'ucla': ['ucla bruins', 'bruins'],
+  'louisville': ['louisville cardinals', 'cards'],
+  'georgia': ['georgia bulldogs', 'uga'],
+  'south carolina': ['south carolina gamecocks', 'gamecocks'],
+  'ole miss': ['mississippi rebels', 'ole miss rebels'],
+  'miss state': ['mississippi state bulldogs'],
+  'nc state': ['nc state wolfpack', 'north carolina state'],
+  'wake forest': ['wake forest demon deacons'],
+  'syracuse': ['syracuse orange'],
+  'vanderbilt': ['vanderbilt commodores'],
+  'nebraska': ['nebraska cornhuskers', 'cornhuskers'],
+  'northwestern': ['northwestern wildcats'],
+  'indiana': ['indiana hoosiers', 'hoosiers'],
+  'byu': ['byu cougars', 'brigham young'],
+  'cincinnati': ['cincinnati bearcats'],
+  'tcu': ['tcu horned frogs'],
+  'arizona state': ['arizona state sun devils', 'asu'],
+  'texas': ['texas longhorns', 'longhorns'],
+  'colorado': ['colorado buffaloes', 'buffs'],
+  'oklahoma': ['oklahoma sooners', 'sooners'],
+  'iowa': ['iowa hawkeyes', 'hawkeyes'],
+  'penn state': ['penn state nittany lions', 'nittany lions'],
+  'rutgers': ['rutgers scarlet knights'],
+  'notre dame': ['notre dame fighting irish', 'fighting irish'],
+  'seton hall': ['seton hall pirates'],
+  'san diego state': ['san diego state aztecs', 'sdsu'],
+  'texas a&m': ['texas a&m aggies', 'aggies'],
+  'georgetown': ['georgetown hoyas', 'hoyas'],
+  'loyola chicago': ['loyola chicago ramblers'],
+  'saint louis': ['saint louis billikens', 'slu'],
+  'stanford': ['stanford cardinal'],
+  'providence': ['providence friars', 'friars'],
+  'butler': ['butler bulldogs'],
+  'dayton': ['dayton flyers', 'flyers'],
+  'drake': ['drake bulldogs'],
+  'new mexico': ['new mexico lobos', 'lobos'],
+  'colorado state': ['colorado state rams'],
+  'usc': ['usc trojans', 'trojans'],
+  'washington': ['washington huskies'],
+  'utah state': ['utah state aggies'],
+  'vcu': ['vcu rams', 'virginia commonwealth'],
+  'richmond': ['richmond spiders'],
+  'saint marys': ["saint mary's gaels", 'saint marys gaels', "st. mary's"],
+  'nevada': ['nevada wolf pack'],
+  'grand canyon': ['grand canyon antelopes', 'gcu'],
+  'yale': ['yale bulldogs'],
+  'princeton': ['princeton tigers'],
 };
 
 // Expected sentiment magnitude by injury severity (for overreaction detection)
@@ -113,7 +254,7 @@ export default defineDetector({
   name: 'sports',
   description: 'Comprehensive sports edge detection: odds divergence, injury overreaction, line moves',
   sources: ['kalshi', 'espn-sports', 'injuries'],
-  minEdge: MIN_EDGE,
+  minEdge: 0.03,  // Use lowest league threshold; per-league filtering in detectOddsEdge
 
   async detect(data: SourceData, markets: Market[]): Promise<Edge[]> {
     const edges: Edge[] = [];
@@ -183,18 +324,19 @@ function detectOddsEdge(market: Market, games: SportsGame[]): Edge | null {
   } else if (!isHomeTeam && game.awayMoneyline) {
     espnProb = oddsToProb(game.awayMoneyline);
   } else if (game.homeSpread !== undefined) {
-    // Use spread if moneyline not available
+    // Use spread if moneyline not available - pass sport for correct σ
     const spread = isHomeTeam ? game.homeSpread : -game.homeSpread;
-    espnProb = spreadToWinProb(spread);
+    espnProb = spreadToWinProb(spread, game.sport);
   } else {
     return null;
   }
 
-  // Calculate edge
+  // Calculate edge with league-aware threshold
   const marketPrice = market.price;
   const edge = Math.abs(espnProb - marketPrice);
+  const minEdge = MIN_EDGE_BY_LEAGUE[game.sport] ?? DEFAULT_MIN_EDGE;
 
-  if (edge < MIN_EDGE) {
+  if (edge < minEdge) {
     return null;
   }
 
@@ -499,7 +641,7 @@ function updateLineHistory(games: SportsGame[]): void {
       homeProb = oddsToProb(game.homeMoneyline);
       awayProb = oddsToProb(game.awayMoneyline);
     } else if (game.homeSpread !== undefined) {
-      homeProb = spreadToWinProb(game.homeSpread);
+      homeProb = spreadToWinProb(game.homeSpread, game.sport);
       awayProb = 1 - homeProb;
     }
 

@@ -31,6 +31,11 @@ export interface Market {
   liquidity?: number;
   url: string;
   closeTime?: string;
+
+  // Bid-ask spread data (when available from orderbook)
+  yesBid?: number;         // Best YES bid (cents)
+  yesAsk?: number;         // Best YES ask (cents)
+  spread?: number;         // Ask - Bid (cents)
 }
 
 // =============================================================================

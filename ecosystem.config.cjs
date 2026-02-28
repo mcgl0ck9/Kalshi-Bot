@@ -141,6 +141,46 @@ module.exports = {
       // Graceful shutdown
       kill_timeout: 5000,
     },
+
+    // Market Maker (spread capture on liquid markets)
+    {
+      name: 'kalshi-maker',
+      script: 'dist/market-maker/engine.js',
+      cwd: __dirname,
+
+      // Node.js settings
+      interpreter: 'node',
+      node_args: '--experimental-specifier-resolution=node',
+
+      // Environment
+      env: {
+        NODE_ENV: 'production',
+      },
+      env_file: '.env',
+
+      // Restart behavior
+      autorestart: true,
+      watch: false,
+      max_restarts: 5,         // Fewer restarts for trading process
+      min_uptime: '30s',       // Must run 30s before considered stable
+      restart_delay: 10000,    // 10s delay between restarts
+
+      // Memory management
+      max_memory_restart: '256M',
+
+      // Logging
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: 'logs/pm2-maker-error.log',
+      out_file: 'logs/pm2-maker-out.log',
+      merge_logs: true,
+
+      // Process management
+      instances: 1,
+      exec_mode: 'fork',
+
+      // Graceful shutdown - longer timeout for order cancellation
+      kill_timeout: 15000,
+    },
   ],
 
   // Deployment configuration (optional)
