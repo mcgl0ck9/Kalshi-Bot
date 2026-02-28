@@ -755,7 +755,7 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
   if (tickerUpper.match(/^KX(TRUMP|BIDEN|PRES|SEN|GOV|ELECTION)/)) return 'politics';
   if (tickerUpper.match(/^KX(BTC|ETH|CRYPTO)/)) return 'crypto';
   if (tickerUpper.match(/^KX(FED|CPI|GDP|JOBS|RATE)/)) return 'macro';
-  if (tickerUpper.match(/^KX(NFL|NBA|MLB|NHL)/)) return 'sports';
+  if (tickerUpper.match(/^KX(NFL|NBA|MLB|NHL|NCAA|CBB|MARCH)/)) return 'sports';
   if (tickerUpper.match(/^KX(OSCAR|GRAMMY|EMMY)/)) return 'entertainment';
   if (tickerUpper.match(/^KX(HURR|TEMP)/)) return 'weather';
 
@@ -764,7 +764,7 @@ function categorizeMarket(title: string, ticker?: string): MarketCategory {
     politics: ['trump', 'biden', 'president', 'congress', 'election', 'impeach', 'senate', 'governor'],
     crypto: ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto'],
     macro: ['fed', 'inflation', 'rate cut', 'recession', 'cpi', 'gdp', 'jobs report'],
-    sports: ['nfl', 'nba', 'mlb', 'super bowl', 'world series', 'championship'],
+    sports: ['nfl', 'nba', 'mlb', 'super bowl', 'world series', 'championship', 'ncaa', 'march madness', 'final four', 'college basketball', 'ncaam', 'ncaab'],
     entertainment: ['oscar', 'grammy', 'emmy', 'movie', 'box office', 'album', 'rotten tomatoes', 'tomatometer', 'rt score'],
     geopolitics: ['ukraine', 'russia', 'china', 'israel', 'gaza', 'war', 'invasion', 'tariff'],
     weather: ['hurricane', 'temperature', 'weather', 'storm'],

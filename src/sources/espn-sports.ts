@@ -40,6 +40,7 @@ const ESPN_SPORTS = {
   nba: { sport: 'basketball', league: 'nba' },
   mlb: { sport: 'baseball', league: 'mlb' },
   nhl: { sport: 'hockey', league: 'nhl' },
+  ncaam: { sport: 'basketball', league: 'mens-college-basketball' },
 } as const;
 
 // =============================================================================

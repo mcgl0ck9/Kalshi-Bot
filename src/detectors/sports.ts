@@ -47,6 +47,7 @@ const LINE_MOVE_THRESHOLD = 0.03;            // 3% move significant
 
 // Team name normalization for matching
 const TEAM_ALIASES: Record<string, string[]> = {
+  // NFL
   'chiefs': ['kansas city chiefs', 'kc chiefs', 'kansas city'],
   'eagles': ['philadelphia eagles', 'philly eagles', 'philadelphia'],
   '49ers': ['san francisco 49ers', 'sf 49ers', 'san francisco', 'niners'],
@@ -55,11 +56,35 @@ const TEAM_ALIASES: Record<string, string[]> = {
   'lions': ['detroit lions', 'detroit'],
   'cowboys': ['dallas cowboys', 'dallas'],
   'packers': ['green bay packers', 'green bay'],
+  // NBA
   'lakers': ['los angeles lakers', 'la lakers'],
   'celtics': ['boston celtics', 'boston'],
   'warriors': ['golden state warriors', 'golden state', 'gsw'],
+  // MLB
   'yankees': ['new york yankees', 'ny yankees'],
   'dodgers': ['los angeles dodgers', 'la dodgers'],
+  // NCAAM - Top programs and tournament contenders
+  'duke': ['duke blue devils', 'duke university'],
+  'tar heels': ['north carolina tar heels', 'unc', 'north carolina'],
+  'wildcats': ['kentucky wildcats', 'kentucky', 'uk wildcats', 'arizona wildcats', 'kansas state wildcats'],
+  'jayhawks': ['kansas jayhawks', 'kansas'],
+  'bulldogs': ['gonzaga bulldogs', 'gonzaga'],
+  'huskies': ['uconn huskies', 'connecticut huskies', 'uconn', 'connecticut'],
+  'auburn': ['auburn tigers'],
+  'purdue': ['purdue boilermakers'],
+  'houston': ['houston cougars'],
+  'tennessee': ['tennessee volunteers', 'vols'],
+  'florida': ['florida gators', 'gators'],
+  'iowa state': ['iowa state cyclones', 'cyclones'],
+  'marquette': ['marquette golden eagles'],
+  'alabama': ['alabama crimson tide', 'crimson tide', 'bama'],
+  'michigan state': ['michigan state spartans', 'msu spartans'],
+  'creighton': ['creighton bluejays'],
+  'st johns': ['st. john\'s red storm', 'st john\'s', "saint john's"],
+  'texas tech': ['texas tech red raiders', 'red raiders'],
+  'wisconsin': ['wisconsin badgers', 'badgers'],
+  'michigan': ['michigan wolverines', 'wolverines'],
+  'oregon': ['oregon ducks', 'ducks'],
 };
 
 // Expected sentiment magnitude by injury severity (for overreaction detection)
@@ -559,7 +584,12 @@ function matchesTeam(title: string, teamName: string): boolean {
 }
 
 function isSportsTitle(title: string): boolean {
-  const keywords = ['win', 'championship', 'super bowl', 'playoffs', 'finals', 'game', 'match', 'nfl', 'nba', 'mlb', 'nhl'];
+  const keywords = [
+    'win', 'championship', 'super bowl', 'playoffs', 'finals', 'game', 'match',
+    'nfl', 'nba', 'mlb', 'nhl',
+    'ncaa', 'march madness', 'final four', 'college basketball', 'ncaam', 'ncaab', 'cbb',
+    'tournament', 'bracket', 'elite eight', 'sweet sixteen', 'sweet 16',
+  ];
   const lower = title.toLowerCase();
   return keywords.some(k => lower.includes(k));
 }

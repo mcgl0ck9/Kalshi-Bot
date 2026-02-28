@@ -27,6 +27,12 @@ const SERIES_TO_FETCH = [
   'KXMEASLES', 'KXFLU',
   // Sports (if active)
   'KXNFL', 'KXNBA', 'KXMLB',
+  // College Basketball (NCAAM)
+  'KXNCAAMBGAME',     // Moneylines
+  'KXNCAAMBSPREAD',   // Spreads
+  'KXNCAAMBTOTAL',    // Totals
+  'KXNCAAMB1HSPREAD', // First half spreads
+  'KXNCAAMB1HTOTAL',  // First half totals
 ];
 
 // =============================================================================
@@ -163,7 +169,7 @@ function categorizeMarket(series: string, title: string): Market['category'] {
   if (s.includes('RT') || s.includes('BOX') || s.includes('OSCAR')) return 'entertainment';
   if (s.includes('MEASLES') || s.includes('FLU') || s.includes('COVID')) return 'health';
   if (s.includes('WEATHER') || s.includes('SNOW') || s.includes('RAIN')) return 'weather';
-  if (s.includes('NFL') || s.includes('NBA') || s.includes('MLB') || s.includes('NHL')) return 'sports';
+  if (s.includes('NFL') || s.includes('NBA') || s.includes('MLB') || s.includes('NHL') || s.includes('NCAA') || s.includes('CBB') || s.includes('MARCH')) return 'sports';
 
   return 'other';
 }
